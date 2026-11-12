@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { HARDCODED_ADMIN_EMAILS } from '../lib/adminConfigService';
 import { X, Mail, Lock, User, UserPlus, LogIn, Ghost } from 'lucide-react';
 
 export default function AuthModal({ isOpen, onClose }) {
@@ -27,7 +28,7 @@ export default function AuthModal({ isOpen, onClose }) {
         await registerWithEmail(email, password, name, phone);
       }
       onClose();
-      if (email.toLowerCase() === 'jaompe@gmail.com' || email.toLowerCase() === 'peluqueriaelkin@gmail.com') {
+      if (email && HARDCODED_ADMIN_EMAILS.includes(email.toLowerCase().trim())) {
         navigate('/admin');
       }
     } catch (err) {
@@ -41,7 +42,8 @@ export default function AuthModal({ isOpen, onClose }) {
     try {
       const user = await loginWithGoogle();
       onClose();
-      if (user?.email?.toLowerCase() === 'jaompe@gmail.com' || user?.email?.toLowerCase() === 'peluqueriaelkin@gmail.com' || user?.isAdmin) {
+      const isHardcodedAdmin = user?.email && HARDCODED_ADMIN_EMAILS.includes(user.email.toLowerCase().trim());
+      if (user?.isAdmin || isHardcodedAdmin) {
         navigate('/admin');
       }
     } catch (err) {

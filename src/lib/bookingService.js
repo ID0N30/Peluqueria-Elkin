@@ -137,7 +137,7 @@ export const getAvailability = async (date) => {
   return { date, slots, allSlots, isClosed: false };
 };
 
-export const createAppointment = async ({ date, time, clientName, clientPhone, notes, userId }) => {
+export const createAppointment = async ({ date, time, clientName, clientPhone, notes, userId, isAdminManual = false }) => {
   const appointmentRef = doc(collection(db, 'appointments'));
   const scheduleRef = doc(db, 'config', 'schedule');
 
@@ -168,7 +168,7 @@ export const createAppointment = async ({ date, time, clientName, clientPhone, n
       transaction.set(slotDocRef, { count: bookedCount + 1 }, { merge: true });
 
       // Save the appointment
-      const finalUserId = userId || auth.currentUser?.uid || null;
+      const finalUserId = isAdminManual ? null : (userId !== undefined ? userId : (auth.currentUser?.uid || null));
       const cleanPhone = clientPhone ? String(clientPhone).trim().replace(/\D/g, '') : '';
       transaction.set(appointmentRef, {
         userId: finalUserId,
@@ -178,6 +178,7 @@ export const createAppointment = async ({ date, time, clientName, clientPhone, n
         clientPhone: cleanPhone,
         notes: notes || '',
         status: 'confirmed',
+        source: isAdminManual ? 'admin' : 'web',
         createdAt: serverTimestamp()
       });
     });

@@ -1,4 +1,4 @@
-import { parseISO, isBefore, startOfDay, addDays, isValid, format } from 'date-fns';
+import { parseISO, isBefore, startOfDay, addDays, isValid } from 'date-fns';
 
 export function validateName(name) {
   return typeof name === 'string' && name.trim().length >= 2;

@@ -8,7 +8,7 @@ import {
   where, 
   onSnapshot 
 } from 'firebase/firestore';
-import { cancelAppointment, completeAppointment } from './bookingService.js';
+import { cancelAppointment, completeAppointment, createAppointment } from './bookingService.js';
 
 const DEFAULT_SCHEDULE = {
   hours: { start: '08:00', end: '20:00' },
@@ -118,6 +118,21 @@ export const cancelAppointmentAdmin = async (appointmentId) => {
 
 export const completeAppointmentAdmin = async (appointmentId) => {
   return await completeAppointment(appointmentId, true);
+};
+
+export const createAppointmentAdmin = async ({ date, time, clientName, clientPhone = '', notes = '' }) => {
+  if (!date || !time || !clientName || !String(clientName).trim()) {
+    throw new Error('La fecha, la hora y el nombre del cliente son obligatorios.');
+  }
+  return await createAppointment({
+    date,
+    time,
+    clientName: String(clientName).trim(),
+    clientPhone: clientPhone ? String(clientPhone).trim() : '',
+    notes: notes ? String(notes).trim() : '',
+    userId: null,
+    isAdminManual: true
+  });
 };
 
 export const subscribeAppointmentsMetrics = (callback) => {

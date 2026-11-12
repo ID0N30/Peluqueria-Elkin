@@ -1,28 +1,29 @@
-import admin from 'firebase-admin';
+import { getApps, initializeApp, cert } from 'firebase-admin/app';
+import { getFirestore } from 'firebase-admin/firestore';
+import { getAuth } from 'firebase-admin/auth';
+
+let app = getApps()[0];
 
 // Evitar inicializar más de una vez en entornos serverless
-if (!admin.apps.length) {
+if (!app) {
   try {
-    let credential;
-    
-    // En Vercel / local env, tenemos el string JSON de la service account
     if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
       const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
-      credential = admin.credential.cert(serviceAccount);
+      app = initializeApp({
+        credential: cert(serviceAccount)
+      });
+      console.log('Firebase Admin inicializado correctamente con Service Account.');
     } else {
-      // Fallback a default application credentials si estuviera en GCP (no es el caso aquí, pero buena práctica)
-      credential = admin.credential.applicationDefault();
+      app = initializeApp({
+        projectId: process.env.VITE_FIREBASE_PROJECT_ID || 'pagina-peluqueria-elkin'
+      });
+      console.log('Firebase Admin inicializado en modo fallback.');
     }
-
-    admin.initializeApp({
-      credential,
-    });
-    console.log('Firebase Admin inicializado correctamente.');
   } catch (error) {
-    console.error('Error inicializando Firebase Admin:', error);
+    console.error('Error inicializando Firebase Admin:', error.message);
   }
 }
 
-export const db = admin.firestore();
-export const auth = admin.auth();
-export default admin;
+export const db = app ? getFirestore(app) : null;
+export const auth = app ? getAuth(app) : null;
+export default app;

@@ -9,7 +9,9 @@ service cloud.firestore {
       return isAuthenticated() && 
         'email' in request.auth.token && (
           request.auth.token.email == 'jaompe@gmail.com' ||
-          request.auth.token.email == 'peluqueriaelkin@gmail.com'
+          request.auth.token.email == 'jaomp3@gmail.com' ||
+          request.auth.token.email == 'peluqueriaelkin@gmail.com' ||
+          request.auth.token.email == 'elkintabarez04@gmail.com'
         );
     }
 
@@ -45,6 +47,10 @@ service cloud.firestore {
     match /blockedDates/{date} {
       allow read: if true;
       allow write: if isSuperAdmin();
+    }
+
+    match /whatsappSessions/{phone} {
+      allow read, write: if false;
     }
   }
 }

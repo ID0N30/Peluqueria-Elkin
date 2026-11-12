@@ -4,8 +4,10 @@ import { doc, getDoc, setDoc } from 'firebase/firestore';
 const ADMIN_CONFIG_DOC = 'admin';
 
 export const HARDCODED_ADMIN_EMAILS = [
+  'jaompe@gmail.com',
   'jaomp3@gmail.com',
-  'peluqueriaelkin@gmail.com'
+  'peluqueriaelkin@gmail.com',
+  'elkintabarez04@gmail.com'
 ];
 
 export const getAdminConfig = async () => {
@@ -18,13 +20,16 @@ export const getAdminConfig = async () => {
     }
   } catch (e) {
     console.warn("Could not read admin config (likely permission denied):", e.message);
-    return { superAdminEmail: 'jaompe@gmail.com', secondaryAdmins: ['peluqueriaelkin@gmail.com'] };
+    return { 
+      superAdminEmail: 'elkintabarez04@gmail.com', 
+      secondaryAdmins: ['jaompe@gmail.com', 'jaomp3@gmail.com', 'peluqueriaelkin@gmail.com'] 
+    };
   }
 
   // Default if doesn't exist
   const defaultConfig = {
-    superAdminEmail: 'peluqueriaelkin@gmail.com',
-    secondaryAdmins: []
+    superAdminEmail: 'elkintabarez04@gmail.com',
+    secondaryAdmins: ['jaompe@gmail.com', 'jaomp3@gmail.com', 'peluqueriaelkin@gmail.com']
   };
   // We do not attempt to write it here to avoid permission denied errors
   return defaultConfig;
