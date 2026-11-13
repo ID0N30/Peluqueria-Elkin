@@ -39,3 +39,31 @@
   - [x] Reglas de seguridad de Firestore en `firestore.rules`.
   - [x] Script de inicialización `scripts/seed.js` para `config/adminAuth` y `config/schedule`.
   - [x] Verificación de build de producción (`npm run build`).
+
+
+---
+
+## Fase 2: Bot de WhatsApp Guiado (Cloud API + Máquina de Estados) — Completado: 2026-11-12
+
+- [x] **1. Configuración de Meta WhatsApp Cloud API**
+  - [x] App Business creada en Meta for Developers (`2366489874114699`).
+  - [x] Número `+57 302 2012409` (Phone ID: `1415062101693906`) conectado en modo `LIVE`.
+  - [x] WABA ID `1121157634042724` suscrito formalmente a la app (`POST /subscribed_apps`).
+  - [x] Token de usuario del sistema permanente generado con permisos `whatsapp_business_messaging` y `whatsapp_business_management`.
+
+- [x] **2. Core de Negocio Unificado (`api/_lib/bookingService.js`)**
+  - [x] Normalización de números colombianos a 10 dígitos locales (`normalizeColombianPhone`).
+  - [x] Control horario en zona `America/Bogota` (`getColombiaNow`, `formatTo12Hour`).
+  - [x] Cálculo de disponibilidad (`getAvailableDates`, `getAvailableSlots`) con reglas de días laborales, fechas bloqueadas y horas pasadas.
+  - [x] Transacciones atómicas en Firestore para agendamiento (`createAppointment`) y cancelación (`cancelAppointmentById`) previniendo sobrecupo.
+
+- [x] **3. Cliente Meta y Máquina de Estados (`api/_lib/`)**
+  - [x] Cliente ligero `whatsappClient.js` con soporte para mensajes de texto, botones interactivos (máx 3) y listas desplegables (máx 10 filas).
+  - [x] Máquina de estados determinista `whatsappFlow.js` respaldada en `whatsappSessions/{phone}` con comandos globales (`hola`, `menu`).
+  - [x] Flujo guiado: `IDLE` -> `SELECT_DATE` -> `SELECT_PERIOD` -> `SELECT_TIME` -> `AWAITING_NAME` -> `CONFIRM_BOOKING` / `SELECT_CANCEL`.
+
+- [x] **4. Webhook Serverless en Vercel (`api/whatsapp/webhook.js`)**
+  - [x] Verificación `GET` instantánea con desafío en texto plano (`hub.challenge`).
+  - [x] Procesamiento `POST` asíncrono con import dinámico y respuesta `200 OK`.
+  - [x] Configuración de Node 22 (`engines`) y rewrites limpios en `vercel.json`.
+  - [x] Blindaje de la colección `whatsappSessions` en `firestore.rules`.

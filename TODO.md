@@ -1,22 +1,33 @@
-# Tareas Pendientes (TODO) — Peluquería Elkin
+# Tareas (TODO & DONE) — Peluquería Elkin
 
-## Fase 1 — Despliegue y Puesta en Marcha de la Web
-- [ ] Crear proyecto en Firebase (Firestore + Authentication) siguiendo `SETUP_INSTRUCTIONS.md`.
-- [ ] Configurar variables de entorno en `.env` local y en el panel de Vercel (`FIREBASE_SERVICE_ACCOUNT_KEY`, `ADMIN_UID`, `VITE_FIREBASE_*`).
-- [ ] Ejecutar `node scripts/seed.js` para inicializar `config/schedule` y `config/adminAuth`.
-- [ ] Desplegar reglas de seguridad (`firestore.rules`) en la consola de Firebase.
-- [ ] Cambiar la contraseña inicial (`admin`) desde el panel `/admin` tras el primer despliegue.
+## ✅ Completado (DONE) — 2026-11-12
+- **Web de Reservas en Producción**: Desplegada exitosamente en Vercel ([https://peluqueria-elkin.vercel.app](https://peluqueria-elkin.vercel.app)), conectada a Firebase Firestore y Authentication.
+- **Panel Administrativo & Elkin**: Permisos de superadministrador asignados a Elkin (`elkintabarez04@gmail.com`) y administradores autorizados. Agendamiento manual de citas para clientes presenciales, métricas en vivo, gestión de horarios, estilistas y fechas bloqueadas.
+- **Bot de WhatsApp Guiado en Vivo (`+57 302 2012409`)**:
+  - Cuenta de WhatsApp Business (WABA ID: `1121157634042724`) suscrita oficialmente a la aplicación Meta Cloud API (`2366489874114699`).
+  - Webhook activo y verificado en `https://peluqueria-elkin.vercel.app/api/whatsapp/webhook`.
+  - Máquina de estados determinista con menús interactivos (botones y listas desplegables): Agendamiento guiado, consulta de turnos, jornadas (mañana/tarde/noche), captura de nombre y cancelación con liberación de cupo en tiempo real.
+  - Core de negocio atómico con transacciones en Firestore para prevención de condiciones de carrera (*Race Conditions*).
 
 ---
 
-## Fase 2 — Bot de WhatsApp Guiado (Sin IA — Menús Interactivos / Máquina de Estados + MCP para Desarrollo)
+## Fase 1 — Despliegue y Puesta en Marcha de la Web
+- [x] Crear proyecto en Firebase (Firestore + Authentication) siguiendo `SETUP_INSTRUCTIONS.md`.
+- [x] Configurar variables de entorno en `.env` local y en el panel de Vercel (`FIREBASE_SERVICE_ACCOUNT_KEY`, `ADMIN_UID`, `VITE_FIREBASE_*`).
+- [x] Ejecutar `node scripts/seed.js` para inicializar `config/schedule` y `config/adminAuth`.
+- [x] Desplegar reglas de seguridad (`firestore.rules`) en la consola de Firebase.
+- [x] Cambiar la contraseña inicial (`admin`) desde el panel `/admin` tras el primer despliegue.
+
+---
+
+## Fase 2 — Bot de WhatsApp Guiado (Sin IA — Menús Interactivos / Máquina de Estados)
 
 ### 1. Configuración en Meta for Developers (WhatsApp Cloud API)
-- [ ] Crear App de tipo **Business** en [Meta for Developers](https://developers.facebook.com/).
-- [ ] Agregar el producto **WhatsApp** y vincular el número telefónico comprado y la cuenta de Meta Business.
-- [ ] Generar un **Token de Usuario del Sistema Permanente** (System User Token) en Meta Business Suite con permisos `whatsapp_business_messaging` y `whatsapp_business_management`.
-- [ ] Obtener `WHATSAPP_PHONE_NUMBER_ID` y definir un `WHATSAPP_VERIFY_TOKEN` secreto.
-- [ ] Configurar las variables en Vercel:
+- [x] Crear App de tipo **Business** en [Meta for Developers](https://developers.facebook.com/).
+- [x] Agregar el producto **WhatsApp** y vincular el número telefónico comprado y la cuenta de Meta Business.
+- [x] Generar un **Token de Usuario del Sistema Permanente** (System User Token) en Meta Business Suite con permisos `whatsapp_business_messaging` y `whatsapp_business_management`.
+- [x] Obtener `WHATSAPP_PHONE_NUMBER_ID` (`1415062101693906`) y definir un `WHATSAPP_VERIFY_TOKEN` secreto.
+- [x] Configurar las variables en Vercel:
   - `WHATSAPP_ACCESS_TOKEN`
   - `WHATSAPP_PHONE_NUMBER_ID`
   - `WHATSAPP_VERIFY_TOKEN`
@@ -48,7 +59,7 @@
 - [x] Crear endpoint `api/whatsapp/webhook.js`:
   - [x] `GET`: verificación del webhook con Meta (`hub.challenge`).
   - [x] `POST`: lectura de respuesta interactiva (`interactive.button_reply.id`, `interactive.list_reply.id`) o texto (`text.body`), ejecución de `whatsappFlow.js` y respuesta inmediata.
-- [ ] Conectar el webhook en el panel de Meta apuntando a `https://<tu-dominio>.vercel.app/api/whatsapp/webhook`.
+- [x] Conectar el webhook en el panel de Meta apuntando a `https://peluqueria-elkin.vercel.app/api/whatsapp/webhook` y suscribir WABA ID `1121157634042724`.
 
 ### 5. Pruebas End-to-End
-- [ ] Probar el flujo de botones y listas desde WhatsApp verificando que las citas se reflejen en tiempo real en la web (`/admin`) y descuenten cupo en la página de reservas (`/`).
+- [x] Probar el flujo de botones y listas desde WhatsApp verificando que las citas se reflejen en tiempo real en la web (`/admin`) y descuenten cupo en la página de reservas (`/`).
