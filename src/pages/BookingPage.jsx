@@ -86,14 +86,14 @@ export default function BookingPage() {
     setSelectedDate(windowDates[0]);
   }, []);
 
-  const fetchSlotsForDate = async (date, isBackground = false) => {
+  const fetchSlotsForDate = async (date, isBackground = false, preloadedCounts = null) => {
     if (!isBackground) {
       setLoadingSlots(true);
       setError('');
       setSelectedTime('');
     }
     try {
-      const res = await api.getAvailability(date);
+      const res = await api.getAvailability(date, preloadedCounts);
       setSlots(res.slots || []);
       setAllSlots(res.allSlots || []);
       
@@ -128,8 +128,9 @@ export default function BookingPage() {
     
     let isInitial = true;
     const dailySlotRef = doc(db, 'dailySlots', selectedDate);
-    const unsubscribe = onSnapshot(dailySlotRef, () => {
-      fetchSlotsForDate(selectedDate, !isInitial);
+    const unsubscribe = onSnapshot(dailySlotRef, (snap) => {
+      const counts = snap.exists() ? (snap.data().counts || {}) : {};
+      fetchSlotsForDate(selectedDate, !isInitial, counts);
       isInitial = false;
     }, (err) => {
       console.warn('dailySlots listener fallback:', err);
@@ -248,12 +249,12 @@ export default function BookingPage() {
               Hacer nueva reserva <ChevronRight className="w-4 h-4" />
             </button>
             <a 
-              href="https://wa.me/573115711709?text=Hola,%20acabo%20de%20agendar%20una%20cita%20y%20tengo%20una%20consulta"
+              href="https://wa.me/573022012409?text=Hola"
               target="_blank"
               rel="noopener noreferrer"
               className="w-full bg-white dark:bg-[#18181B] text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700 py-3.5 rounded-xl font-medium hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors flex items-center justify-center gap-2"
             >
-              <MessageCircle className="w-5 h-5 text-[#25D366]" /> Contáctanos por WhatsApp
+              <MessageCircle className="w-5 h-5 text-[#25D366]" /> Gestionar cita por WhatsApp (Bot 24/7)
             </a>
           </div>
         </div>

@@ -167,20 +167,35 @@ export const createAppointmentAdmin = async ({ date, time, clientName, clientPho
 
 /**
  * Suscripción en tiempo real a todas las citas confirmadas a partir de una fecha base (por defecto hoy).
- * Usado para vistas cronológicas globales sin descargar histórico cancelado o pasado.
+ * Diseñado para evitar el requerimiento de índices compuestos manuales en Firestore:
+ * - Si fromDate === '2000-01-01' (modo 'all'), consulta por status == 'confirmed' con limit(200).
+ * - En cualquier otro caso, consulta por date >= minDate y filtra status en memoria.
  */
 export const subscribeAllConfirmedAppointments = (callback, { fromDate = null } = {}) => {
-  const minDate = fromDate || format(new Date(), 'yyyy-MM-dd');
-  const q = query(
-    collection(db, 'appointments'),
-    where('status', '==', 'confirmed'),
-    where('date', '>=', minDate)
-  );
+  let q;
+  const isHistoricAll = fromDate === '2000-01-01';
+
+  if (isHistoricAll) {
+    q = query(
+      collection(db, 'appointments'),
+      where('status', '==', 'confirmed'),
+      limit(200)
+    );
+  } else {
+    const minDate = fromDate || format(new Date(), 'yyyy-MM-dd');
+    q = query(
+      collection(db, 'appointments'),
+      where('date', '>=', minDate)
+    );
+  }
 
   return onSnapshot(q, (snapshot) => {
     const appointments = [];
     snapshot.forEach((docSnap) => {
-      appointments.push({ id: docSnap.id, ...docSnap.data() });
+      const data = docSnap.data();
+      if (isHistoricAll || data.status === 'confirmed') {
+        appointments.push({ id: docSnap.id, ...data });
+      }
     });
 
     appointments.sort((a, b) => {

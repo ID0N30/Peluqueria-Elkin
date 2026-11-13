@@ -40,13 +40,13 @@ export default function HeroBanner() {
               </button>
               
               <a 
-                href="https://wa.me/573115711709?text=Hola,%20quisiera%20agendar%20una%20cita%20en%20la%20peluquería"
+                href="https://wa.me/573022012409?text=Hola"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center justify-center gap-2 bg-white dark:bg-[#121215] text-zinc-900 dark:text-white border border-zinc-200 dark:border-zinc-800 px-8 py-4 rounded-full font-medium hover:bg-zinc-50 dark:hover:bg-zinc-900 transition-all hover:scale-105 active:scale-95"
               >
                 <MessageCircle className="w-5 h-5 text-[#25D366]" />
-                Consultas por WhatsApp
+                Agendar por WhatsApp
               </a>
             </div>
           </div>

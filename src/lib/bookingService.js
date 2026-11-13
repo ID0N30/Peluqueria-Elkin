@@ -62,10 +62,10 @@ const buildApiHeaders = async () => {
 
 /**
  * Consulta la disponibilidad para una fecha específica.
- * Optimizado a 1 sola lectura sobre dailySlots/{date} eliminando las 24 lecturas a slots
- * y protegiendo la privacidad al no consultar appointments desde clientes públicos.
+ * Permite recibir preloadedCounts para evitar lecturas duplicadas cuando el componente
+ * ya tiene una suscripción o lectura previa sobre dailySlots/{date}.
  */
-export const getAvailability = async (date) => {
+export const getAvailability = async (date, preloadedCounts = null) => {
   const schedule = await getCachedSchedule();
 
   // 1. Validar día laborable
@@ -92,16 +92,20 @@ export const getAvailability = async (date) => {
   const activeStylists = (schedule.stylists || []).filter(s => s.active !== false).length || 1;
   const slotDuration = schedule.slotDuration || 30;
 
-  // 3. Lectura optimizada del contador diario consolidado (1 sola lectura)
+  // 3. Obtención del contador diario consolidado (utiliza preloadedCounts si se provee, evitando lectura a Firestore)
   let dailyCounts = {};
-  try {
-    const dailySlotRef = doc(db, 'dailySlots', date);
-    const dailySnap = await getDoc(dailySlotRef);
-    if (dailySnap.exists()) {
-      dailyCounts = dailySnap.data().counts || {};
+  if (preloadedCounts !== null) {
+    dailyCounts = preloadedCounts;
+  } else {
+    try {
+      const dailySlotRef = doc(db, 'dailySlots', date);
+      const dailySnap = await getDoc(dailySlotRef);
+      if (dailySnap.exists()) {
+        dailyCounts = dailySnap.data().counts || {};
+      }
+    } catch (error) {
+      console.warn("No se pudo cargar dailySlots, asumiendo cupos limpios.", error);
     }
-  } catch (error) {
-    console.warn("No se pudo cargar dailySlots, asumiendo cupos limpios.", error);
   }
 
   // 4. Generar franjas horarias

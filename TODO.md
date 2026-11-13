@@ -178,3 +178,29 @@ Para mantener todo el ecosistema dentro de **Firebase / Google Cloud** sin cuent
 - [x] **3. Verificar Token de Firebase App Check en Backend (`api/_lib/verifyAppCheck.js`)**:
   - Usar `admin.appCheck().verifyToken(appCheckToken)` nativo de `firebase-admin` en `/api/appointments/index.js`, `/api/appointments/lookup.js` y `/api/appointments/cancel.js`.
   - Si `ENFORCE_APPCHECK=true` está activo en el entorno, rechazar peticiones sin token válido de Firebase App Check; mientras no esté activo, permitir el paso para no bloquear pruebas.
+
+
+---
+
+## Fase 7 — Pulido Final de Consultas Firestore y Enlaces al Bot de WhatsApp (`+57 302 2012409`)
+
+### 1. Enlaces de Reserva por WhatsApp hacia el Bot (`+57 302 2012409`) Conservando el Número Personal de Elkin en el Footer
+- [x] **Botón de WhatsApp en `src/components/HeroBanner.jsx` (líneas 43-50)**:
+  - Cambiar el enlace `href` para que apunte al número del **Bot de Reservas** (`https://wa.me/573022012409?text=Hola`) con un texto claro como *"Agendar por WhatsApp"* (o *"Reservar por WhatsApp"*), de modo que al tocarlo se active inmediatamente el menú interactivo del bot.
+- [x] **Botón post-reserva en `src/pages/BookingPage.jsx` (líneas 250-256)**:
+  - Apuntar el botón de gestión rápida por WhatsApp al bot (`https://wa.me/573022012409?text=Hola`) o ofrecer acceso claro al bot para consultar/cancelar citas, manteniendo el número personal de Elkin para dudas directas si se desea.
+- [x] **Footer en `src/App.jsx` (líneas 58-63) — NO eliminar el número actual de Elkin**:
+  - **Conservar intacto** el número personal de Elkin (`+57 311 571 1709` / `https://wa.me/573115711709`) como **"Contacto Directo Elkin: +57 311 571 1709"** en el pie de página, y agregar justo al lado/debajo el enlace al **"Bot de Reservas 24/7: +57 302 201 2409"** (`https://wa.me/573022012409?text=Hola`).
+
+### 2. Evitar Requerimiento de Índice Compuesto (`Composite Index`) en "Todas las Citas" (`src/lib/adminService.js`)
+- [x] En `subscribeAllConfirmedAppointments` (`src/lib/adminService.js`):
+  - **Problema resuelto**:
+    - Cuando se consulta desde una fecha (`fromDate`), usa únicamente `where('date', '>=', minDate)` en la query de Firestore y filtra `data.status === 'confirmed'` en memoria dentro del callback `onSnapshot`.
+    - Cuando se consultan todas las confirmadas históricas (`fromDate === '2000-01-01'`), usa `where('status', '==', 'confirmed')` con `limit(200)`. Así jamás requerirá un índice compuesto manual en Firebase Console.
+
+### 3. Eliminar Lectura Duplicada de `dailySlots` al Escuchar en Tiempo Real (`BookingPage.jsx` + `src/lib/bookingService.js`)
+- [x] En `src/lib/bookingService.js` y `src/lib/api.js`:
+  - Recibe parámetro opcional `preloadedCounts = null` (`export const getAvailability = async (date, preloadedCounts = null)`).
+  - Si `preloadedCounts !== null`, usa ese objeto directamente sin ejecutar `getDoc(doc(db, 'dailySlots', date))`.
+- [x] En `src/pages/BookingPage.jsx` (líneas 89 y 131-133):
+  - En el callback de `onSnapshot(dailySlotRef, (snap) => ...)`, extraer `const counts = snap.exists() ? (snap.data().counts || {}) : {};` y pasarlo directamente a `fetchSlotsForDate(selectedDate, !isInitial, counts)` → `api.getAvailability(date, counts)`. Esto ahorra 1 lectura de Firestore adicional en cada clic o actualización en vivo.

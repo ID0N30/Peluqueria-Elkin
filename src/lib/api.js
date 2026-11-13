@@ -10,8 +10,8 @@ import { loginWithEmail, changePassword } from './authService.js';
 // It maps the old Vercel Serverless API calls to the new Direct Firebase Client SDK logic.
 
 export const api = {
-  getAvailability: async (date) => {
-    return await getAvailability(date);
+  getAvailability: async (date, preloadedCounts = null) => {
+    return await getAvailability(date, preloadedCounts);
   },
     
   createAppointment: async (appointmentData) => {

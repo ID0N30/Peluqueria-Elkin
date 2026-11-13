@@ -58,7 +58,10 @@ function App() {
                   <div className="flex flex-col items-center md:items-start gap-2">
                     <h3 className="font-semibold mb-2">Contacto</h3>
                     <a href="https://wa.me/573115711709" target="_blank" rel="noopener noreferrer" className="text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 text-sm transition-colors">
-                      WhatsApp: +57 311 571 1709
+                      Contacto Directo Elkin: +57 311 571 1709
+                    </a>
+                    <a href="https://wa.me/573022012409?text=Hola" target="_blank" rel="noopener noreferrer" className="text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 text-sm transition-colors">
+                      Bot de Reservas 24/7: +57 302 201 2409
                     </a>
                   </div>
                 </div>
