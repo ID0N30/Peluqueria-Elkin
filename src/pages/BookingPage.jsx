@@ -2,13 +2,13 @@ import { useState, useEffect } from 'react';
 import { format, addDays, startOfDay, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { api } from '../lib/api';
-import { Calendar, Clock, User, Phone, CheckCircle, ChevronRight, Sparkles, CalendarOff, MessageCircle } from 'lucide-react';
+import { Calendar, Clock, User, Phone, CheckCircle, ChevronRight, Sparkles, CalendarOff, MessageCircle, HelpCircle, MapPin } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { saveClientContactData } from '../lib/authService';
 import HeroBanner from '../components/HeroBanner';
 import ServicesSection from '../components/ServicesSection';
 import { formatTo12Hour } from '../utils/formatters';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebaseClient';
 
 const getEarliestAvailableRange = (slotsList) => {
@@ -126,15 +126,16 @@ export default function BookingPage() {
   useEffect(() => {
     if (!selectedDate) return;
     
-    // Carga inicial
-    fetchSlotsForDate(selectedDate, false);
-    
-    // Suscripción en tiempo real
-    const q = query(collection(db, 'appointments'), where('date', '==', selectedDate));
-    const unsubscribe = onSnapshot(q, () => {
-      fetchSlotsForDate(selectedDate, true);
+    let isInitial = true;
+    const dailySlotRef = doc(db, 'dailySlots', selectedDate);
+    const unsubscribe = onSnapshot(dailySlotRef, () => {
+      fetchSlotsForDate(selectedDate, !isInitial);
+      isInitial = false;
+    }, (err) => {
+      console.warn('dailySlots listener fallback:', err);
+      fetchSlotsForDate(selectedDate, false);
     });
-    
+
     return () => unsubscribe();
   }, [selectedDate]);
 
@@ -483,6 +484,111 @@ export default function BookingPage() {
       </div>
       
       <ServicesSection />
+      
+      {/* Sección Semántica de Preguntas Frecuentes (FAQ Local SEO) */}
+      <section aria-label="Preguntas frecuentes" className="py-20 bg-zinc-50 dark:bg-[#09090B] border-t border-zinc-200/70 dark:border-zinc-800/80 transition-colors duration-300">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-12">
+            <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-xs font-semibold text-zinc-600 dark:text-zinc-400 mb-4 shadow-sm">
+              <HelpCircle className="w-4 h-4 text-zinc-900 dark:text-white" />
+              <span>Preguntas Frecuentes</span>
+            </div>
+            <h2 className="text-3xl sm:text-4xl font-playfair font-bold text-zinc-900 dark:text-white tracking-tight">
+              Dudas Comunes sobre las Citas
+            </h2>
+            <p className="text-zinc-500 dark:text-zinc-400 mt-3 text-base max-w-xl mx-auto">
+              Todo lo que necesitas saber para agendar tu turno desde Victoria o cualquiera de nuestras veredas.
+            </p>
+          </div>
+
+          <div className="space-y-4">
+            <div className="bg-white dark:bg-[#18181B] border border-zinc-200/80 dark:border-zinc-800 rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">
+              <h3 className="font-bold text-lg text-zinc-900 dark:text-white flex items-center gap-2.5 mb-2">
+                <MapPin className="w-5 h-5 text-zinc-700 dark:text-zinc-300 shrink-0" />
+                ¿Puedo reservar si vengo desde una vereda de Victoria, Caldas?
+              </h3>
+              <p className="text-zinc-600 dark:text-zinc-400 text-sm sm:text-base leading-relaxed pl-7">
+                ¡Totalmente! Este sistema fue diseñado especialmente para clientes de veredas como El Llano, Fierritos, La Pradera, Cañaveral y demás zonas rurales. Puedes asegurar tu turno con días de anticipación desde el celular para coordinar tu viaje en chiva o mototaxi y llegar directo a tu corte, sin perder tiempo esperando en el pueblo.
+              </p>
+            </div>
+
+            <div className="bg-white dark:bg-[#18181B] border border-zinc-200/80 dark:border-zinc-800 rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">
+              <h3 className="font-bold text-lg text-zinc-900 dark:text-white flex items-center gap-2.5 mb-2">
+                <Clock className="w-5 h-5 text-zinc-700 dark:text-zinc-300 shrink-0" />
+                ¿Qué pasa si llego tarde o necesito cancelar/reprogramar?
+              </h3>
+              <p className="text-zinc-600 dark:text-zinc-400 text-sm sm:text-base leading-relaxed pl-7">
+                Tenemos una tolerancia de 5 a 10 minutos. Si se te presenta algún contratiempo en la carretera o no alcanzas a llegar, puedes cancelar o cambiar tu cita con un clic desde el menú <strong className="text-zinc-800 dark:text-zinc-200">"Mis Citas"</strong> o por WhatsApp. De esa manera, el espacio queda disponible de inmediato para otro vecino.
+              </p>
+            </div>
+
+            <div className="bg-white dark:bg-[#18181B] border border-zinc-200/80 dark:border-zinc-800 rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">
+              <h3 className="font-bold text-lg text-zinc-900 dark:text-white flex items-center gap-2.5 mb-2">
+                <MessageCircle className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                ¿Cómo funciona el agendamiento y los turnos por WhatsApp?
+              </h3>
+              <p className="text-zinc-600 dark:text-zinc-400 text-sm sm:text-base leading-relaxed pl-7">
+                Si no deseas usar la página web, puedes escribir a nuestro número oficial de WhatsApp (<strong className="text-zinc-800 dark:text-zinc-200">+57 302 2012409</strong>). Nuestro bot interactivo te muestra las mismas fechas y horas libres en tiempo real y te confirma el turno inmediatamente con recordatorio.
+              </p>
+            </div>
+
+            <div className="bg-white dark:bg-[#18181B] border border-zinc-200/80 dark:border-zinc-800 rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">
+              <h3 className="font-bold text-lg text-zinc-900 dark:text-white flex items-center gap-2.5 mb-2">
+                <Sparkles className="w-5 h-5 text-amber-500 shrink-0" />
+                ¿Atienden a niños y realizan arreglo y perfilado de barba?
+              </h3>
+              <p className="text-zinc-600 dark:text-zinc-400 text-sm sm:text-base leading-relaxed pl-7">
+                Sí. En Peluquería & Barbería Elkin atendemos a caballeros y niños de todas las edades. Realizamos cortes clásicos, degradados (fade), arreglo tradicional de barba con navaja desechable y productos para el cuidado y brillo capilar.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* JSON-LD FAQPage para Google Rich Snippets */}
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              "@context": "https://schema.org",
+              "@type": "FAQPage",
+              "mainEntity": [
+                {
+                  "@type": "Question",
+                  "name": "¿Puedo reservar si vengo desde una vereda de Victoria, Caldas?",
+                  "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "Sí, el sistema permite que clientes de veredas como El Llano, Fierritos, La Pradera, Cañaveral y otras zonas rurales agenden con antelación para coordinar su transporte y llegar directo sin hacer fila."
+                  }
+                },
+                {
+                  "@type": "Question",
+                  "name": "¿Qué pasa si llego tarde o necesito cancelar mi cita?",
+                  "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "Existe una tolerancia de 5 a 10 minutos. Es posible cancelar o reprogramar desde la sección 'Mis Citas' o por WhatsApp para liberar el cupo."
+                  }
+                },
+                {
+                  "@type": "Question",
+                  "name": "¿Cómo funciona la reserva de turnos por WhatsApp?",
+                  "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "Puedes agendar escribiendo al WhatsApp +57 302 2012409 con el bot interactivo que sincroniza horarios en tiempo real con la web."
+                  }
+                },
+                {
+                  "@type": "Question",
+                  "name": "¿Atienden a niños y realizan arreglo de barba?",
+                  "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "Sí, atendemos a caballeros y niños de todas las edades con cortes clásicos, degradados modernos (fade), arreglo de barba y navaja desechable."
+                  }
+                }
+              ]
+            })
+          }}
+        />
+      </section>
       
       {/* Hide scrollbar styles for date picker */}
       <style>{`

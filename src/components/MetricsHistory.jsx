@@ -13,14 +13,22 @@ export default function MetricsHistory() {
     history: []
   });
   const [filter, setFilter] = useState('all'); // all, completed, cancelled
-  const [dateRange, setDateRange] = useState('all'); // today, week, month, all, custom
+  const [dateRange, setDateRange] = useState('month'); // today, week, month, all, custom
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
 
   useEffect(() => {
-    const unsubscribe = subscribeAppointmentsMetrics(setMetrics);
+    let rangeArg = dateRange;
+    if (dateRange === 'custom') {
+      if (!customStart || !customEnd) {
+        return;
+      }
+      rangeArg = { start: customStart, end: customEnd };
+    }
+
+    const unsubscribe = subscribeAppointmentsMetrics(rangeArg, setMetrics);
     return () => unsubscribe();
-  }, []);
+  }, [dateRange, customStart, customEnd]);
 
   const dateFilteredHistory = useMemo(() => {
     let filtered = metrics.history;

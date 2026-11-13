@@ -41,9 +41,60 @@ export default async function handler(req, res) {
   // 2. Procesamiento de Mensajes Entrantes (POST)
   if (req.method === 'POST') {
     try {
+      // Validación opcional de firma x-hub-signature-256 si WHATSAPP_APP_SECRET está configurada
+      const appSecret = process.env.WHATSAPP_APP_SECRET;
+      if (appSecret) {
+        const signature = req.headers?.['x-hub-signature-256'];
+        if (!signature) {
+          console.warn('Webhook POST rechazado: falta header x-hub-signature-256');
+          if (typeof res.status === 'function') {
+            return res.status(401).send('Firma requerida');
+          } else {
+            res.statusCode = 401;
+            return res.end('Firma requerida');
+          }
+        }
+
+        const { createHmac, timingSafeEqual } = await import('crypto');
+        const rawPayload = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
+        const expectedSig = 'sha256=' + createHmac('sha256', appSecret).update(rawPayload).digest('hex');
+
+        let isMatch = false;
+        try {
+          isMatch = timingSafeEqual(Buffer.from(signature), Buffer.from(expectedSig));
+        } catch (_) {
+          isMatch = false;
+        }
+
+        if (!isMatch) {
+          console.warn('Webhook POST rechazado: x-hub-signature-256 no coincide');
+          if (typeof res.status === 'function') {
+            return res.status(403).send('Firma no coincide');
+          } else {
+            res.statusCode = 403;
+            return res.end('Firma no coincide');
+          }
+        }
+      }
+
       const entry = req.body?.entry?.[0];
       const change = entry?.changes?.[0];
       const value = change?.value;
+
+      // Verificación de número de teléfono de destino (phone_number_id)
+      const configuredPhoneId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+      const incomingPhoneId = value?.metadata?.phone_number_id;
+      if (configuredPhoneId && incomingPhoneId && incomingPhoneId !== configuredPhoneId) {
+        console.warn('Mensaje recibido para phone_number_id ajeno, ignorando:', incomingPhoneId);
+        if (typeof res.status === 'function') {
+          return res.status(200).json({ status: 'IGNORED_PHONE_MISMATCH' });
+        } else {
+          res.statusCode = 200;
+          res.setHeader('Content-Type', 'application/json');
+          return res.end(JSON.stringify({ status: 'IGNORED_PHONE_MISMATCH' }));
+        }
+      }
+
       const messages = value?.messages;
 
       if (messages && messages.length > 0) {
@@ -51,7 +102,7 @@ export default async function handler(req, res) {
         const from = message.from;
 
         if (from) {
-          // Import dinámico para que el GET de verificación sea ultra-rápido y no dependa de Firebase
+          // Import dinámico para aislar la carga y mantener el webhook rápido
           const { handleIncomingMessage } = await import('../_lib/whatsappFlow.js');
           await handleIncomingMessage(from, message);
         }

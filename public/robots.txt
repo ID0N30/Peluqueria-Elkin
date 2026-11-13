@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+Allow: /cancel
+Disallow: /admin
+Disallow: /admin/
+Disallow: /admin/login
+Disallow: /api/
+
+Sitemap: https://peluqueria-elkin.vercel.app/sitemap.xml

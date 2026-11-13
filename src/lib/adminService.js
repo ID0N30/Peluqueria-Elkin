@@ -6,9 +6,13 @@ import {
   collection, 
   query, 
   where, 
+  limit,
+  runTransaction,
+  serverTimestamp,
   onSnapshot 
 } from 'firebase/firestore';
-import { cancelAppointment, completeAppointment, createAppointment } from './bookingService.js';
+import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns';
+import { cancelAppointment, completeAppointment } from './bookingService.js';
 
 const DEFAULT_SCHEDULE = {
   hours: { start: '08:00', end: '20:00' },
@@ -120,30 +124,128 @@ export const completeAppointmentAdmin = async (appointmentId) => {
   return await completeAppointment(appointmentId, true);
 };
 
+/**
+ * Agendamiento manual directo por parte del administrador.
+ * Escribe directamente en Firestore como isSuperAdmin() y actualiza dailySlots/{date}.
+ */
 export const createAppointmentAdmin = async ({ date, time, clientName, clientPhone = '', notes = '' }) => {
   if (!date || !time || !clientName || !String(clientName).trim()) {
     throw new Error('La fecha, la hora y el nombre del cliente son obligatorios.');
   }
-  return await createAppointment({
-    date,
-    time,
-    clientName: String(clientName).trim(),
-    clientPhone: clientPhone ? String(clientPhone).trim() : '',
-    notes: notes ? String(notes).trim() : '',
-    userId: null,
-    isAdminManual: true
+
+  const cleanName = String(clientName).trim();
+  const cleanPhone = clientPhone ? String(clientPhone).trim().replace(/\D/g, '') : '';
+  const cleanNotes = notes ? String(notes).trim() : '';
+
+  const appointmentRef = doc(collection(db, 'appointments'));
+  const dailySlotRef = doc(db, 'dailySlots', date);
+
+  await runTransaction(db, async (transaction) => {
+    const dailySnap = await transaction.get(dailySlotRef);
+    const dailyData = dailySnap.exists() ? dailySnap.data() : { date, counts: {} };
+    const counts = { ...(dailyData.counts || {}) };
+    counts[time] = (counts[time] || 0) + 1;
+
+    transaction.set(dailySlotRef, { date, counts }, { merge: true });
+
+    transaction.set(appointmentRef, {
+      userId: null,
+      date,
+      time,
+      clientName: cleanName,
+      clientPhone: cleanPhone,
+      notes: cleanNotes,
+      status: 'confirmed',
+      source: 'admin',
+      createdAt: serverTimestamp(),
+      cancelledAt: null
+    });
+  });
+
+  return { success: true, id: appointmentRef.id, date, time, clientName: cleanName, clientPhone: cleanPhone };
+};
+
+/**
+ * Suscripción en tiempo real a todas las citas confirmadas a partir de una fecha base (por defecto hoy).
+ * Usado para vistas cronológicas globales sin descargar histórico cancelado o pasado.
+ */
+export const subscribeAllConfirmedAppointments = (callback, { fromDate = null } = {}) => {
+  const minDate = fromDate || format(new Date(), 'yyyy-MM-dd');
+  const q = query(
+    collection(db, 'appointments'),
+    where('status', '==', 'confirmed'),
+    where('date', '>=', minDate)
+  );
+
+  return onSnapshot(q, (snapshot) => {
+    const appointments = [];
+    snapshot.forEach((docSnap) => {
+      appointments.push({ id: docSnap.id, ...docSnap.data() });
+    });
+
+    appointments.sort((a, b) => {
+      const dateComp = (a.date || '').localeCompare(b.date || '');
+      if (dateComp !== 0) return dateComp;
+      return (a.time || '').localeCompare(b.time || '');
+    });
+
+    callback(appointments);
   });
 };
 
-export const subscribeAppointmentsMetrics = (callback) => {
-  const q = collection(db, 'appointments');
+/**
+ * Suscripción con filtro de rango de fechas a métricas de citas.
+ * Aplica where('date', '>=', startStr) y where('date', '<=', endStr) directamente en Firestore,
+ * evitando descargar miles de citas históricas y aplicando limit(200) cuando dateRange === 'all'.
+ */
+export const subscribeAppointmentsMetrics = (arg1, arg2) => {
+  let dateRange = 'month';
+  let callback;
+
+  if (typeof arg1 === 'function') {
+    callback = arg1;
+    dateRange = 'month';
+  } else {
+    dateRange = arg1 || 'month';
+    callback = arg2;
+  }
+
+  let q;
+  const now = new Date();
+
+  if (dateRange === 'all') {
+    q = query(collection(db, 'appointments'), limit(200));
+  } else {
+    let startStr, endStr;
+    if (typeof dateRange === 'object' && dateRange !== null && dateRange.start && dateRange.end) {
+      startStr = dateRange.start;
+      endStr = dateRange.end;
+    } else if (dateRange === 'today') {
+      startStr = format(now, 'yyyy-MM-dd');
+      endStr = startStr;
+    } else if (dateRange === 'week') {
+      startStr = format(startOfWeek(now, { weekStartsOn: 1 }), 'yyyy-MM-dd');
+      endStr = format(endOfWeek(now, { weekStartsOn: 1 }), 'yyyy-MM-dd');
+    } else {
+      // Default: 'month'
+      startStr = format(startOfMonth(now), 'yyyy-MM-dd');
+      endStr = format(endOfMonth(now), 'yyyy-MM-dd');
+    }
+
+    q = query(
+      collection(db, 'appointments'),
+      where('date', '>=', startStr),
+      where('date', '<=', endStr)
+    );
+  }
+
   return onSnapshot(q, (snapshot) => {
     let totalCompleted = 0;
     let totalCancelled = 0;
     let totalConfirmed = 0;
     const history = [];
 
-    snapshot.forEach(docSnap => {
+    snapshot.forEach((docSnap) => {
       const data = { id: docSnap.id, ...docSnap.data() };
       history.push(data);
       if (data.status === 'completed') totalCompleted++;

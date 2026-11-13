@@ -92,11 +92,11 @@ const syncUserProfile = async (user, additionalData = {}) => {
     const snap = await getDoc(userRef);
 
     if (!snap.exists()) {
-      // Determine initial role if not hardcoded
       if (!userData.role) {
         const superAdminStatus = await isSuperAdmin(user);
         userData.role = superAdminStatus ? 'admin' : 'user';
       }
+      userData.createdAt = serverTimestamp();
       await setDoc(userRef, userData);
     } else {
       await setDoc(userRef, userData, { merge: true });
@@ -106,29 +106,49 @@ const syncUserProfile = async (user, additionalData = {}) => {
   }
 };
 
+/**
+ * Suscripción al estado de autenticación de Firebase.
+ * Optimizado para leer users/{uid} una sola vez por sesión y solo escribir si el documento no existe,
+ * eliminando lecturas y escrituras redundantes en cada F5 / recarga de página.
+ */
 export const subscribeToAuthState = (callback) => {
   return onAuthStateChanged(auth, async (user) => {
     try {
       if (user) {
-        await syncUserProfile(user);
-        
+        const userRef = doc(db, 'users', user.uid);
         let userProfile = null;
+
         try {
-          const userDoc = await getDoc(doc(db, 'users', user.uid));
-          if (userDoc.exists()) {
-            userProfile = userDoc.data();
+          const userSnap = await getDoc(userRef);
+          if (userSnap.exists()) {
+            userProfile = userSnap.data();
+          } else {
+            // Solo creamos el documento si es primera vez que inicia sesión
+            const isHardcoded = user.email && HARDCODED_ADMIN_EMAILS.includes(user.email.toLowerCase().trim());
+            const superAdminStatus = isHardcoded || await isSuperAdmin(user);
+
+            userProfile = {
+              uid: user.uid,
+              email: user.email,
+              displayName: user.displayName || 'Anónimo',
+              isAnonymous: user.isAnonymous,
+              role: superAdminStatus ? 'admin' : 'user',
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp()
+            };
+            await setDoc(userRef, userProfile);
           }
         } catch (err) {
-          console.warn("Could not read user profile for state:", err.message);
+          console.warn("Could not read or create user profile for state:", err.message);
         }
 
         const isHardcodedAdmin = user.email && HARDCODED_ADMIN_EMAILS.includes(user.email.toLowerCase().trim());
-        const superAdminStatus = isHardcodedAdmin || await isSuperAdmin(user);
-        
+        const superAdminStatus = isHardcodedAdmin || (userProfile && userProfile.role === 'admin') || await isSuperAdmin(user);
+
         const enrichedUser = {
           ...user,
           profile: userProfile,
-          isAdmin: superAdminStatus || (userProfile && userProfile.role === 'admin')
+          isAdmin: superAdminStatus
         };
         callback(enrichedUser);
       } else {

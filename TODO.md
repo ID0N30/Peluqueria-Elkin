@@ -63,3 +63,118 @@
 
 ### 5. Pruebas End-to-End
 - [x] Probar el flujo de botones y listas desde WhatsApp verificando que las citas se reflejen en tiempo real en la web (`/admin`) y descuenten cupo en la página de reservas (`/`).
+
+
+---
+
+## Fase 3 — Optimización SEO Local (Victoria, Caldas) y Vista Cronológica Global en Panel Admin
+
+### 1. Textos por Defecto y Metadatos Base (Completado en base)
+- [x] Reemplazar todos los textos con corchetes `[...]` en `HeroBanner.jsx`, `ServicesSection.jsx` y el pie de página de `App.jsx` con copywriting real enfocado en **Victoria, Caldas** y sus veredas.
+- [x] Actualizar `index.html` con `lang="es-CO"`, `<title>`, `<meta name="description">`, etiquetas geográficas (`CO-CAL`, `Victoria, Caldas`), OpenGraph y bloque de datos estructurados `JSON-LD` (`HairSalon`).
+
+### 2. Archivos Técnicos de Indexación SEO (Para ejecutar por los agentes)
+- [x] Crear `public/robots.txt` permitiendo la indexación de `/` y bloqueando `/admin`, `/admin/login` y `/api/`, apuntando al `sitemap.xml`.
+- [x] Crear `public/sitemap.xml` con las rutas públicas (`https://peluqueria-elkin.vercel.app/` y `https://peluqueria-elkin.vercel.app/cancel`) con prioridad `1.0` y `0.8`.
+- [x] Crear imagen `public/og-banner.jpg` (1200x630px) a partir del cartel oficial y enlazarla en `<meta property="og:image">` y `<meta name="twitter:image">` en `index.html` para previsualizaciones enriquecidas al compartir por WhatsApp y Facebook.
+- [x] Agregar sección semántica de Preguntas Frecuentes (`<section aria-label="Preguntas frecuentes">` + `FAQPage` en JSON-LD) al final de `BookingPage.jsx` respondiendo dudas locales (cómo agendar desde veredas, cómo cancelar, puntualidad y turnos en Victoria, Caldas).
+
+### 3. Panel Admin: Vista Global de Todas las Citas en Orden de Tiempo (Sin Filtrar por Fecha)
+- [x] En `src/components/AppointmentsList.jsx`:
+  - [x] Añadir un selector de modo de vista en la cabecera:
+    - **[📅 Por Fecha]** (comportamiento actual con el selector `input type="date"`).
+    - **[📋 Todas las Citas (Orden Cronológico)]** (sin filtro de fecha obligatorio, con sub-opción *"Próximas desde hoy"* vs. *"Todas"*).
+  - [x] Cuando esté activo el modo **"Todas las Citas"**:
+    - [x] Suscribirse en tiempo real (`onSnapshot`) a las citas `status == 'confirmed'` sin cláusula `where('date', '==', filterDate)`.
+    - [x] Ordenar todas las reservas cronológicamente por `date` ascendente y luego por `time` ascendente (`a.date.localeCompare(b.date) || a.time.localeCompare(b.time)`).
+    - [x] Mostrar un contador resumen en la parte superior: **"Total reservado: X citas en Y días distintos"** más insignias (pills) con el conteo de citas por cada día (ej. *Vie 13 Nov: 8 citas*, *Sáb 14 Nov: 12 citas*).
+    - [x] Agrupar visualmente las tarjetas por día con un encabezado de fecha claro (ej. `Viernes, 13 de noviembre — 8 reservas`) o mostrar la etiqueta de fecha destacada en cada tarjeta junto a la hora.
+
+
+---
+
+## Fase 4 — Auditoría de Seguridad, Remediación de Vulnerabilidades y Protección Anti-Bots (CAPTCHA)
+
+### 1. Remediación de Vulnerabilidades Críticas en Reglas de Firestore (`firestore.rules`)
+- [x] **CRÍTICO-01 — Escalada de Privilegios a SuperAdmin (`users/{userId}`)**:
+  - **Problema actual**: `allow write: if isAuthenticated() && (request.auth.uid == userId || isSuperAdmin());` permite que cualquier usuario autenticado (incluso anónimo) edite su propio documento en `users/{uid}` y se escriba `role: 'admin'`, convirtiéndose en `isSuperAdmin()` para toda la base de datos.
+  - **Solución**: Prohibir que un usuario normal cree o modifique el campo `role` en su propio documento:
+    - En `create`: `!( 'role' in request.resource.data ) || request.resource.data.role == 'user' || isHardcodedAdmin()`
+    - En `update`: `!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role']) || isSuperAdmin()`
+- [x] **CRÍTICO-02 — Exposición Pública de Datos Personales PII (`appointments` y `users`)**:
+  - **Problema actual**: `match /appointments/{appointmentId} { allow read, create: if true; }` y `BookingPage.jsx` se suscribe con `onSnapshot` a toda la colección `appointments` de la fecha seleccionada desde el navegador público, exponiendo nombres completos (`clientName`), teléfonos (`clientPhone`) y notas de todos los clientes a cualquier persona que abra las DevTools del navegador. Además, `match /users/{userId} { allow read: if isAuthenticated(); }` permite a cualquier usuario leer perfiles de otros usuarios.
+  - **Solución**:
+    - En `users/{userId}`: Restringir `allow read: if isAuthenticated() && (request.auth.uid == userId || isSuperAdmin());`.
+    - En `appointments/{appointmentId}`: Restringir `allow read: if isSuperAdmin();`.
+    - En el cliente público (`BookingPage.jsx` y `src/lib/bookingService.js`): Para saber qué horas están ocupadas en tiempo real sin leer `appointments` públicos, escuchar únicamente `dailySlots/{date}` (que solo contiene `{ counts: { "08:00": 1 } }` sin datos personales) o consultar `/api/availability`.
+    - En `CancelPage.jsx`: Hacer que la búsqueda y cancelación por teléfono pasen exclusivamente por los endpoints Serverless `/api/appointments/lookup` y `/api/appointments/cancel` (Admin SDK), nunca mediante queries directas del cliente sobre `appointments`.
+- [x] **ALTO-03 — Manipulación Directa de Contadores y Citas (`slots` y `appointments`)**:
+  - **Problema actual**: `match /slots/{slotId} { allow read, write: if true; }` y `allow update` abierto en `appointments` permiten que un atacante con un script vacíe o llene toda la peluquería poniendo `count: 999` en `slots` o cancelando citas ajenas sin validar su teléfono.
+  - **Solución**:
+    - Mover toda creación y cancelación pública de citas para que pase **únicamente por los endpoints `/api/appointments` y `/api/appointments/cancel`** (usando `api/_lib/bookingService.js` con `firebase-admin`), tal como exigía el diseño de arquitectura original.
+    - Cambiar `firestore.rules` en `slots/{slotId}` y `dailySlots/{date}` a `allow read: if true; allow write: if isSuperAdmin();` y en `appointments/{appointmentId}` a `allow read, write: if isSuperAdmin();`.
+
+### 2. Seguridad en Endpoints Serverless (`/api`) y Webhook de WhatsApp
+- [x] **ALTO-04 — Verificación de Firma Criptográfica en Webhook de Meta (`X-Hub-Signature-256`) y `phone_number_id`**:
+  - **Solución**: Validar la cabecera `x-hub-signature-256` usando HMAC-SHA256 contra `WHATSAPP_APP_SECRET` (si está definida) y verificar que `phone_number_id` coincida con `WHATSAPP_PHONE_NUMBER_ID`.
+- [x] **MEDIO-05 — Eliminación de Endpoints Legacy Inconsistentes (`/api/admin/login.js`, `/api/admin/change-password.js`)**:
+  - **Solución**: Unificar `/api/availability.js` y `/api/appointments/*.js` para que importen directamente las funciones transaccionales de `api/_lib/bookingService.js` y eliminar endpoints obsoletos.
+- [x] **MEDIO-06 — Cabeceras de Seguridad HTTP en `vercel.json`**:
+  - Agregar headers globales en `vercel.json`: `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin` y `Permissions-Policy: camera=(), microphone=(), geolocation=()`.
+
+### 3. Plan de Implementación de CAPTCHA Anti-Bots (Cloudflare Turnstile + Firebase App Check)
+Para evitar que bots o scripts maliciosos llenen la agenda de Elkin con reservas falsas o hagan ataques de fuerza bruta buscando teléfonos en `/cancel`:
+
+- [x] **Opción Elegida: Cloudflare Turnstile (Invisible / Managed Widget)**
+- [x] **Paso 1 — Configuración de Llaves**:
+  - Documentar `VITE_TURNSTILE_SITE_KEY` y `TURNSTILE_SECRET_KEY` en `.env.example`.
+- [x] **Paso 2 — Helper de Verificación en Backend (`api/_lib/verifyCaptcha.js`)**:
+  - Crear función `verifyTurnstileToken(token, remoteIp)` que envíe un `POST` a `https://challenges.cloudflare.com/turnstile/v0/siteverify` con `TURNSTILE_SECRET_KEY` y devuelva `true/false` (sin bloquear si no está configurada).
+- [x] **Paso 3 — Integración en Frontend (`BookingPage.jsx` y `CancelPage.jsx`)**:
+  - Integrar widget de Turnstile en formularios de cliente.
+- [x] **Paso 4 — Límite de Reservas Activas por Teléfono (Regla Anti-Acaparamiento)**:
+  - En `api/_lib/bookingService.js` (`createAppointment`), validar dentro de la transacción que un mismo `clientPhone` no tenga más de **2 citas futuras confirmadas** al mismo tiempo (`MAX_ACTIVE_APPOINTMENTS_PER_PHONE = 2`).
+
+---
+
+## Fase 5 — Auditoría de Rendimiento y Optimización de Cuota Gratuita de Firebase (Spark Plan: 50k lecturas / 20k escrituras día)
+
+### 1. Eliminación de Explosión N+1 de Lecturas en `slots` (Reducción del 92% de lecturas por consulta)
+- [x] **CRÍTICO-PERF-01 — 24 `getDoc` individuales por cada día consultado**:
+  - Migrado a `dailySlots/{YYYY-MM-DD}` (1 solo documento por fecha con mapa de conteos) y lectura única de `config/schedule` en WhatsApp con `Promise.all` para los 7 días.
+
+### 2. Eliminación del Doble Disparo (`Double Fetch`) en `BookingPage.jsx`
+- [x] **ALTO-PERF-02 — `fetchSlotsForDate` duplicado al cambiar de fecha**:
+  - Reducir a escucha de `dailySlots/{date}` y caché de 60s en `src/lib/bookingService.js`.
+
+### 3. Optimización de `MetricsHistory.jsx` (Evitar descarga completa de toda la historia de la peluquería)
+- [x] **ALTO-PERF-03 — `collection(db, 'appointments')` sin `limit` ni filtro de fecha en servidor**:
+  - Implementado en `src/lib/adminService.js`: `subscribeAppointmentsMetrics(dateRange, callback)` aplica `where('date', '>=', startStr)` y `where('date', '<=', endStr)`, y `limit(200)` para `'all'`.
+  - Añadido `subscribeAllConfirmedAppointments` para vistas cronológicas globales.
+
+### 4. Eliminación de Lecturas y Escrituras Redundantes en cada Recarga (`authService.js` + `AuthContext.jsx`)
+- [x] **MEDIO-PERF-04 — 4 lecturas y 1 escritura en cada F5 de un usuario autenticado**:
+  - `subscribeToAuthState` lee `users/{uid}` una sola vez por sesión y solo ejecuta `setDoc` en el primer registro.
+- [x] **MEDIO-PERF-05 — No bloquear el primer pintado (LCP / SEO) con `!loading && children`**:
+  - `AuthContext.jsx` renderiza `{children}` inmediatamente sin demorar el LCP inicial.
+
+### 5. Optimización de Peso de la Web (Bundle Splitting e Imágenes)
+- [x] **MEDIO-PERF-06 — Bundle único de +809 KB (`vite.config.js` y `App.jsx`)**:
+  - **Problema resuelto**: Al compilar (`npm run build`), se dividió el bundle con `manualChunks` (separando `firebase`, `vendor` y `ui`) y lazy loading con `<Suspense>` en `src/App.jsx` para `AdminDashboardPage`, `AdminLoginPage` y `CancelPage`. `HeroBanner.jsx` cuenta con `loading="eager" fetchPriority="high"`.
+
+
+---
+
+## Fase 6 — Unificación 100% Nativa con Firebase (Reemplazar Cloudflare Turnstile por Firebase App Check)
+
+Para mantener todo el ecosistema dentro de **Firebase / Google Cloud** sin cuentas ni servicios externos como Cloudflare:
+
+- [x] **1. Eliminar dependencia de Cloudflare Turnstile**:
+  - Eliminar `src/components/TurnstileWidget.jsx` y las referencias a `VITE_TURNSTILE_SITE_KEY` / `TURNSTILE_SECRET_KEY` en `BookingPage.jsx`, `CancelPage.jsx`, `api/_lib/verifyCaptcha.js` y `.env.example`.
+- [x] **2. Integrar `Firebase App Check` nativo en `src/lib/firebaseClient.js`**:
+  - Importar `initializeAppCheck, ReCaptchaV3Provider` desde `firebase/app-check`.
+  - Si existe `import.meta.env.VITE_FIREBASE_APPCHECK_SITE_KEY`, inicializar App Check de forma invisible (`isTokenAutoRefreshEnabled: true`).
+  - Exportar helper `getAppCheckToken()` que obtenga el token con `getToken(appCheck, false)` y lo envíe automáticamente en la cabecera `X-Firebase-AppCheck` desde `src/lib/api.js`.
+- [x] **3. Verificar Token de Firebase App Check en Backend (`api/_lib/verifyAppCheck.js`)**:
+  - Usar `admin.appCheck().verifyToken(appCheckToken)` nativo de `firebase-admin` en `/api/appointments/index.js`, `/api/appointments/lookup.js` y `/api/appointments/cancel.js`.
+  - Si `ENFORCE_APPCHECK=true` está activo en el entorno, rechazar peticiones sin token válido de Firebase App Check; mientras no esté activo, permitir el paso para no bloquear pruebas.

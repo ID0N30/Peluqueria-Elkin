@@ -5,30 +5,30 @@ export default function ServicesSection() {
   const services = [
     {
       id: 1,
-      title: "[Servicio 1: ej. Corte Clásico Caballero]",
-      description: "[Descripción y precio sugerido]",
-      price: "[-]",
+      title: "Corte Clásico y Moderno",
+      description: "Corte a tijera o máquina, degradados (fade), desvanecidos y estilo personalizado con acabado limpio y detallado.",
+      price: "30 min",
       icon: <Scissors className="w-6 h-6" />
     },
     {
       id: 2,
-      title: "[Servicio 2: ej. Afeitado y Perfilado de Barba]",
-      description: "[Descripción y precio sugerido]",
-      price: "[-]",
+      title: "Arreglo y Perfilado de Barba",
+      description: "Diseño, rebaje y delineado de barba y bigote con cuchilla profesional para un rostro impecable y definido.",
+      price: "30 min",
       icon: <CheckCircle2 className="w-6 h-6" />
     },
     {
       id: 3,
-      title: "[Servicio 3: ej. Corte y Barba Completo]",
-      description: "[Descripción y precio sugerido]",
-      price: "[-]",
+      title: "Servicio Completo (Corte + Barba)",
+      description: "La experiencia completa de barbería: renovación total de corte de cabello más perfilado y arreglo detallado de barba.",
+      price: "Atención Integral",
       icon: <Sparkles className="w-6 h-6" />
     },
     {
       id: 4,
-      title: "[Servicio 4: ej. Corte para Niños / Jóvenes]",
-      description: "[Descripción y precio sugerido]",
-      price: "[-]",
+      title: "Corte para Niños y Jóvenes",
+      description: "Atención paciente, amable y cuidadosa para los más pequeños y estudiantes de Victoria, con cortes escolares o modernos.",
+      price: "30 min",
       icon: <Scissors className="w-6 h-6" />
     }
   ];
@@ -38,10 +38,10 @@ export default function ServicesSection() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center max-w-3xl mx-auto mb-16 space-y-4">
           <h2 className="text-3xl md:text-5xl font-playfair font-bold text-zinc-900 dark:text-white">
-            [Servicios de Peluquería & Barbería]
+            Servicios de Peluquería y Barbería
           </h2>
           <p className="text-zinc-500 dark:text-zinc-400 text-lg">
-            [Espacio para listar los cortes y servicios con sus descripciones y precios acordados con Elkin].
+            Calidad, puntualidad y dedicación en cada corte para los habitantes de Victoria, Caldas.
           </p>
         </div>
 

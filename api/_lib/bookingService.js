@@ -7,6 +7,8 @@ const DEFAULT_SCHEDULE = {
   slotDurationMinutes: 30
 };
 
+const MAX_ACTIVE_APPOINTMENTS_PER_PHONE = 2;
+
 /**
  * Normaliza un número telefónico colombiano.
  * Limpia caracteres no numéricos y si contiene el prefijo 57 seguido de 10 dígitos,
@@ -61,17 +63,21 @@ export function formatTo12Hour(time24) {
 
 /**
  * Consulta la disponibilidad de franjas horarias para una fecha dada.
+ * Utiliza 1 sola lectura a dailySlots/{date} eliminando las 24 lecturas individuales a slots/{date}_{time}.
+ * Permite recibir cachedSchedule para evitar consultas repetidas al config.
  */
-export async function getAvailableSlots(date) {
-  let schedule = DEFAULT_SCHEDULE;
+export async function getAvailableSlots(date, cachedSchedule = null) {
+  let schedule = cachedSchedule || DEFAULT_SCHEDULE;
 
-  try {
-    const scheduleDoc = await db.collection('config').doc('schedule').get();
-    if (scheduleDoc.exists) {
-      schedule = { ...DEFAULT_SCHEDULE, ...scheduleDoc.data() };
+  if (!cachedSchedule) {
+    try {
+      const scheduleDoc = await db.collection('config').doc('schedule').get();
+      if (scheduleDoc.exists) {
+        schedule = { ...DEFAULT_SCHEDULE, ...scheduleDoc.data() };
+      }
+    } catch (error) {
+      console.warn('Error reading config/schedule in getAvailableSlots:', error.message);
     }
-  } catch (error) {
-    console.warn('Error reading config/schedule in getAvailableSlots:', error.message);
   }
 
   // 1. Verificar día laborable
@@ -97,24 +103,33 @@ export async function getAvailableSlots(date) {
   // 3. Capacidad de estilistas
   const activeStylists = (schedule.stylists || []).filter(s => s.active !== false).length || 1;
 
-  // 4. Citas confirmadas o completadas
-  const bookedSlots = {};
-  try {
-    const snap = await db.collection('appointments')
+  // 4. Lecturas optimizadas: 1 sola lectura a dailySlots/{date} y consulta de citas confirmadas
+  const [dailySlotSnap, appointmentsSnap] = await Promise.all([
+    db.collection('dailySlots').doc(date).get().catch(err => {
+      console.warn('Error reading dailySlots in getAvailableSlots:', err.message);
+      return { exists: false, data: () => ({}) };
+    }),
+    db.collection('appointments')
       .where('date', '==', date)
       .where('status', 'in', ['confirmed', 'completed'])
-      .get();
-    snap.forEach(d => {
-      const time = d.data().time;
-      if (time) {
-        bookedSlots[time] = (bookedSlots[time] || 0) + 1;
-      }
-    });
-  } catch (error) {
-    console.warn('Error querying appointments in getAvailableSlots:', error.message);
-  }
+      .get()
+      .catch(err => {
+        console.warn('Error querying appointments in getAvailableSlots:', err.message);
+        return { forEach: () => {} };
+      })
+  ]);
 
-  // 5. Generar franjas
+  const dailyCounts = (dailySlotSnap.exists && dailySlotSnap.data()?.counts) || {};
+
+  const bookedSlots = {};
+  appointmentsSnap.forEach(d => {
+    const time = d.data().time;
+    if (time) {
+      bookedSlots[time] = (bookedSlots[time] || 0) + 1;
+    }
+  });
+
+  // 5. Generar franjas horarias
   const openTime = schedule.hours?.start || '08:00';
   const closeTime = schedule.hours?.end || '20:00';
   const slotDuration = schedule.slotDurationMinutes || schedule.slotDuration || 30;
@@ -133,20 +148,7 @@ export async function getAvailableSlots(date) {
     }
   }
 
-  // 6. Consultar contadores de slots en paralelo
-  const slotCounters = {};
-  try {
-    await Promise.all(allTimes.map(async (timeStr) => {
-      const slotSnap = await db.collection('slots').doc(`${date}_${timeStr}`).get();
-      if (slotSnap.exists) {
-        slotCounters[timeStr] = slotSnap.data().count || 0;
-      }
-    }));
-  } catch (error) {
-    console.warn('Error reading slots counters in getAvailableSlots:', error.message);
-  }
-
-  // 7. Filtrar franjas pasadas si la fecha es hoy en Colombia
+  // 6. Filtrar franjas pasadas si la fecha es hoy en Colombia
   const colNow = getColombiaNow();
   let candidateTimes = allTimes;
   if (date === colNow.dateStr) {
@@ -156,10 +158,10 @@ export async function getAvailableSlots(date) {
     });
   }
 
-  // 8. Filtrar por cupo disponible
+  // 7. Filtrar por cupo disponible contrastando dailySlots con citas activas
   const availableSlots = candidateTimes.filter(timeStr => {
     const baseCount = bookedSlots[timeStr] || 0;
-    const counterCount = slotCounters[timeStr] || 0;
+    const counterCount = dailyCounts[timeStr] || 0;
     const bookedCount = Math.max(baseCount, counterCount);
     return bookedCount < activeStylists;
   });
@@ -170,6 +172,7 @@ export async function getAvailableSlots(date) {
 /**
  * Evalúa los próximos 7 días a partir de hoy (hora Colombia) y retorna
  * hasta 7 opciones con cupo disponible en formato { date: 'YYYY-MM-DD', label: 'Vie 13 Nov' }.
+ * Optimizado para leer config/schedule 1 sola vez y consultar los 7 días en paralelo.
  */
 export async function getAvailableDates() {
   const colNow = getColombiaNow();
@@ -179,7 +182,18 @@ export async function getAvailableDates() {
   const daysNames = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
   const monthsNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
 
-  const availableDates = [];
+  // Leer configuración de horario una sola vez fuera del bucle
+  let schedule = DEFAULT_SCHEDULE;
+  try {
+    const scheduleDoc = await db.collection('config').doc('schedule').get();
+    if (scheduleDoc.exists) {
+      schedule = { ...DEFAULT_SCHEDULE, ...scheduleDoc.data() };
+    }
+  } catch (error) {
+    console.warn('Error reading config/schedule in getAvailableDates:', error.message);
+  }
+
+  const dateChecks = [];
 
   for (let i = 0; i < 7; i++) {
     const d = new Date(baseDate.getTime() + i * 24 * 60 * 60 * 1000);
@@ -188,13 +202,28 @@ export async function getAvailableDates() {
     const dStr = String(d.getDate()).padStart(2, '0');
     const dateStr = `${yStr}-${mStr}-${dStr}`;
 
-    const availability = await getAvailableSlots(dateStr);
-    if (availability.slots && availability.slots.length > 0) {
-      const dayName = daysNames[d.getDay()];
-      const dayNum = d.getDate();
-      const monthName = monthsNames[d.getMonth()];
-      const label = i === 0 ? `${dayName} ${dayNum} ${monthName} (Hoy)` : `${dayName} ${dayNum} ${monthName}`;
-      availableDates.push({ date: dateStr, label });
+    const dayName = daysNames[d.getDay()];
+    const dayNum = d.getDate();
+    const monthName = monthsNames[d.getMonth()];
+    const label = i === 0 ? `${dayName} ${dayNum} ${monthName} (Hoy)` : `${dayName} ${dayNum} ${monthName}`;
+
+    dateChecks.push({
+      dateStr,
+      label,
+      promise: getAvailableSlots(dateStr, schedule)
+    });
+  }
+
+  const results = await Promise.all(dateChecks.map(item => item.promise));
+  const availableDates = [];
+
+  for (let i = 0; i < dateChecks.length; i++) {
+    const availability = results[i];
+    if (availability && availability.slots && availability.slots.length > 0) {
+      availableDates.push({
+        date: dateChecks[i].dateStr,
+        label: dateChecks[i].label
+      });
     }
   }
 
@@ -203,21 +232,46 @@ export async function getAvailableDates() {
 
 /**
  * Crea una cita de forma atómica previniendo condiciones de carrera con transacciones en Firestore.
+ * Si source !== 'admin', limita a un máximo de 2 citas futuras confirmadas por teléfono.
+ * Utiliza dailySlots/{YYYY-MM-DD} para el conteo seguro y consolidado por fecha.
  */
-export async function createAppointment({ date, time, clientName, clientPhone, source = 'whatsapp' }) {
+export async function createAppointment({ date, time, clientName, clientPhone, notes = '', source = 'whatsapp' }) {
   if (!date || !time || !clientName || !clientPhone) {
     throw new Error('Todos los campos son obligatorios (date, time, clientName, clientPhone).');
   }
 
   const cleanPhone = normalizeColombianPhone(clientPhone);
   const cleanName = String(clientName).trim();
+  const cleanNotes = notes ? String(notes).trim() : '';
   const appointmentRef = db.collection('appointments').doc();
   const scheduleRef = db.collection('config').doc('schedule');
   const blockedRef = db.collection('blockedDates').doc(date);
-  const slotDocRef = db.collection('slots').doc(`${date}_${time}`);
+  const dailySlotRef = db.collection('dailySlots').doc(date);
+
+  const colNow = getColombiaNow();
 
   return await db.runTransaction(async (transaction) => {
-    // 1. Obtener cupo de estilistas activos
+    // 1. Si no es admin, validar límite de citas activas por teléfono (máx 2)
+    if (source !== 'admin') {
+      const activeSnap = await transaction.get(
+        db.collection('appointments')
+          .where('clientPhone', 'in', [cleanPhone, `57${cleanPhone}`])
+          .where('status', '==', 'confirmed')
+      );
+      let activeFutureCount = 0;
+      activeSnap.forEach(docSnap => {
+        const d = docSnap.data();
+        if (d.date >= colNow.dateStr) {
+          activeFutureCount++;
+        }
+      });
+
+      if (activeFutureCount >= MAX_ACTIVE_APPOINTMENTS_PER_PHONE) {
+        throw new Error('MAX_APPOINTMENTS_REACHED');
+      }
+    }
+
+    // 2. Obtener cupo de estilistas activos
     const scheduleSnap = await transaction.get(scheduleRef);
     let activeStylists = 1;
     if (scheduleSnap.exists) {
@@ -225,13 +279,13 @@ export async function createAppointment({ date, time, clientName, clientPhone, s
       activeStylists = (sched.stylists || []).filter(s => s.active !== false).length || 1;
     }
 
-    // 2. Verificar día bloqueado
+    // 3. Verificar día bloqueado
     const blockedSnap = await transaction.get(blockedRef);
     if (blockedSnap.exists) {
       throw new Error('SLOT_TAKEN');
     }
 
-    // 3. Consultar citas confirmadas / completadas en ese slot
+    // 4. Consultar citas confirmadas / completadas en ese slot
     const appointmentsSnap = await transaction.get(
       db.collection('appointments')
         .where('date', '==', date)
@@ -240,20 +294,20 @@ export async function createAppointment({ date, time, clientName, clientPhone, s
     );
     const queryCount = appointmentsSnap.size;
 
-    // 4. Verificar contador en slots
-    const slotSnap = await transaction.get(slotDocRef);
-    let counterCount = 0;
-    if (slotSnap.exists) {
-      counterCount = slotSnap.data().count || 0;
-    }
+    // 5. Verificar contador en dailySlots/{date}
+    const dailySlotSnap = await transaction.get(dailySlotRef);
+    const dailyData = dailySlotSnap.exists ? dailySlotSnap.data() : { date, counts: {} };
+    const currentCounts = { ...(dailyData.counts || {}) };
+    const slotCount = currentCounts[time] || 0;
 
-    const bookedCount = Math.max(counterCount, queryCount);
+    const bookedCount = Math.max(slotCount, queryCount);
     if (bookedCount >= activeStylists) {
       throw new Error('SLOT_TAKEN');
     }
 
-    // Incrementar contador de slot
-    transaction.set(slotDocRef, { count: bookedCount + 1 }, { merge: true });
+    // Incrementar contador de slot en dailySlots/{date}
+    currentCounts[time] = bookedCount + 1;
+    transaction.set(dailySlotRef, { date, counts: currentCounts }, { merge: true });
 
     // Guardar cita
     const appointmentData = {
@@ -262,7 +316,7 @@ export async function createAppointment({ date, time, clientName, clientPhone, s
       time,
       clientName: cleanName,
       clientPhone: cleanPhone,
-      notes: '',
+      notes: cleanNotes,
       status: 'confirmed',
       source,
       createdAt: new Date(),
@@ -279,25 +333,42 @@ export async function createAppointment({ date, time, clientName, clientPhone, s
 }
 
 /**
- * Busca citas futuras confirmadas pertenecientes al teléfono dado.
+ * Busca citas futuras confirmadas pertenecientes al teléfono o userId dado.
  */
-export async function lookupAppointmentsByPhone(clientPhone) {
+export async function lookupAppointmentsByPhone(clientPhone, userId = null) {
   const cleanPhone = normalizeColombianPhone(clientPhone);
-  if (!cleanPhone) return [];
-
   const nowCol = getColombiaNow();
-  const phoneVariants = Array.from(new Set([cleanPhone, `57${cleanPhone}`])).filter(Boolean);
 
   const results = [];
   const seenIds = new Set();
 
-  for (const phone of phoneVariants) {
-    const snap = await db.collection('appointments')
-      .where('clientPhone', '==', phone)
+  if (cleanPhone) {
+    const phoneVariants = Array.from(new Set([cleanPhone, `57${cleanPhone}`])).filter(Boolean);
+    for (const phone of phoneVariants) {
+      const snap = await db.collection('appointments')
+        .where('clientPhone', '==', phone)
+        .where('status', '==', 'confirmed')
+        .get();
+
+      snap.forEach(docSnap => {
+        if (!seenIds.has(docSnap.id)) {
+          seenIds.add(docSnap.id);
+          const data = docSnap.data();
+          if (data.date >= nowCol.dateStr) {
+            results.push({ id: docSnap.id, ...data });
+          }
+        }
+      });
+    }
+  }
+
+  if (userId) {
+    const snapUser = await db.collection('appointments')
+      .where('userId', '==', userId)
       .where('status', '==', 'confirmed')
       .get();
 
-    snap.forEach(docSnap => {
+    snapUser.forEach(docSnap => {
       if (!seenIds.has(docSnap.id)) {
         seenIds.add(docSnap.id);
         const data = docSnap.data();
@@ -317,9 +388,9 @@ export async function lookupAppointmentsByPhone(clientPhone) {
 }
 
 /**
- * Cancela una cita de forma atómica validando pertenencia del teléfono y liberando cupo del slot.
+ * Cancela una cita de forma atómica validando pertenencia del teléfono y liberando cupo del slot en dailySlots/{date}.
  */
-export async function cancelAppointmentById({ id, clientPhone }) {
+export async function cancelAppointmentById({ id, clientPhone, isAdmin = false }) {
   if (!id) throw new Error('ID de cita requerido');
   const cleanPhone = normalizeColombianPhone(clientPhone);
   const appointmentRef = db.collection('appointments').doc(id);
@@ -331,21 +402,26 @@ export async function cancelAppointmentById({ id, clientPhone }) {
     }
 
     const data = snap.data();
-    const docPhone = normalizeColombianPhone(data.clientPhone);
-    if (docPhone !== cleanPhone) {
-      throw new Error('FORBIDDEN');
+    if (!isAdmin) {
+      const docPhone = normalizeColombianPhone(data.clientPhone);
+      if (docPhone !== cleanPhone) {
+        throw new Error('FORBIDDEN');
+      }
     }
 
     if (data.status === 'cancelled') {
       return { success: true, alreadyCancelled: true, id };
     }
 
-    // Decrementar contador en el slot
+    // Decrementar contador en dailySlots/{date}
     if (data.date && data.time) {
-      const slotDocRef = db.collection('slots').doc(`${data.date}_${data.time}`);
-      const slotSnap = await transaction.get(slotDocRef);
-      if (slotSnap.exists && (slotSnap.data().count || 0) > 0) {
-        transaction.set(slotDocRef, { count: slotSnap.data().count - 1 }, { merge: true });
+      const dailySlotRef = db.collection('dailySlots').doc(data.date);
+      const dailySnap = await transaction.get(dailySlotRef);
+      if (dailySnap.exists) {
+        const counts = { ...(dailySnap.data().counts || {}) };
+        const currentCount = counts[data.time] || 0;
+        counts[data.time] = Math.max(0, currentCount - 1);
+        transaction.set(dailySlotRef, { date: data.date, counts }, { merge: true });
       }
     }
 

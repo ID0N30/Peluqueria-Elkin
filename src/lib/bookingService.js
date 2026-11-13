@@ -1,12 +1,7 @@
-import { db, auth } from '../firebase.js';
+import { db, getAppCheckToken } from '../firebase.js';
 import { 
-  collection, 
-  query, 
-  where, 
-  getDocs, 
-  getDoc,
-  runTransaction, 
   doc, 
+  getDoc,
   serverTimestamp,
   updateDoc
 } from 'firebase/firestore';
@@ -19,34 +14,76 @@ const DEFAULT_SCHEDULE = {
   slotDuration: 30
 };
 
-export const getAvailability = async (date) => {
-  let schedule = DEFAULT_SCHEDULE;
-  
-  // 1. Query schedule safely
+// Caché en memoria de 60 segundos para config/schedule para reducir drásticamente lecturas Firestore
+let cachedSchedule = null;
+let scheduleCacheExpiry = 0;
+
+export const getCachedSchedule = async () => {
+  const now = Date.now();
+  if (cachedSchedule && now < scheduleCacheExpiry) {
+    return cachedSchedule;
+  }
+
   try {
     const scheduleRef = doc(db, 'config', 'schedule');
     const scheduleSnap = await getDoc(scheduleRef);
     if (scheduleSnap.exists()) {
-      schedule = { ...DEFAULT_SCHEDULE, ...scheduleSnap.data() };
+      cachedSchedule = { ...DEFAULT_SCHEDULE, ...scheduleSnap.data() };
+    } else {
+      cachedSchedule = DEFAULT_SCHEDULE;
     }
   } catch (error) {
     console.warn("No se pudo cargar config/schedule, usando por defecto.", error);
+    cachedSchedule = cachedSchedule || DEFAULT_SCHEDULE;
   }
 
+  scheduleCacheExpiry = now + 60000; // 60 segundos
+  return cachedSchedule;
+};
+
+/**
+ * Genera los headers HTTP para peticiones hacia /api/appointments/*
+ * adjuntando el token de Firebase App Check si está disponible.
+ */
+const buildApiHeaders = async () => {
+  const headers = {
+    'Content-Type': 'application/json'
+  };
+  try {
+    const token = await getAppCheckToken();
+    if (token) {
+      headers['X-Firebase-AppCheck'] = token;
+    }
+  } catch (err) {
+    console.warn('Error adjuntando App Check token:', err.message);
+  }
+  return headers;
+};
+
+/**
+ * Consulta la disponibilidad para una fecha específica.
+ * Optimizado a 1 sola lectura sobre dailySlots/{date} eliminando las 24 lecturas a slots
+ * y protegiendo la privacidad al no consultar appointments desde clientes públicos.
+ */
+export const getAvailability = async (date) => {
+  const schedule = await getCachedSchedule();
+
+  // 1. Validar día laborable
   const dayOfWeekIndex = new Date(date + 'T12:00:00').getDay();
   const dayNames = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
   const dayStr = dayNames[dayOfWeekIndex];
 
   if (schedule.workingDays && schedule.workingDays[dayStr] === false) {
-    return { date, slots: [], isClosed: true, reason: 'Día no laborable (Cerrado)' };
+    return { date, slots: [], allSlots: [], isClosed: true, reason: 'Día no laborable (Cerrado)' };
   }
 
-  // 2. Check blocked dates safely
+  // 2. Validar fecha bloqueada
   try {
     const blockedDateRef = doc(db, 'blockedDates', date);
     const blockedDateSnap = await getDoc(blockedDateRef);
     if (blockedDateSnap.exists()) {
-      return { date, slots: [], isClosed: true, reason: blockedDateSnap.data().reason || 'Fecha bloqueada' };
+      const reason = blockedDateSnap.data().reason || 'Fecha bloqueada';
+      return { date, slots: [], allSlots: [], isClosed: true, reason };
     }
   } catch (error) {
     console.warn("No se pudo verificar blockedDates.", error);
@@ -55,24 +92,19 @@ export const getAvailability = async (date) => {
   const activeStylists = (schedule.stylists || []).filter(s => s.active !== false).length || 1;
   const slotDuration = schedule.slotDuration || 30;
 
-  // 3. Get appointments safely
-  const bookedSlots = {};
+  // 3. Lectura optimizada del contador diario consolidado (1 sola lectura)
+  let dailyCounts = {};
   try {
-    const q = query(
-      collection(db, 'appointments'),
-      where('date', '==', date),
-      where('status', 'in', ['confirmed', 'completed'])
-    );
-    const querySnapshot = await getDocs(q);
-    querySnapshot.forEach(doc => {
-      const time = doc.data().time;
-      bookedSlots[time] = (bookedSlots[time] || 0) + 1;
-    });
+    const dailySlotRef = doc(db, 'dailySlots', date);
+    const dailySnap = await getDoc(dailySlotRef);
+    if (dailySnap.exists()) {
+      dailyCounts = dailySnap.data().counts || {};
+    }
   } catch (error) {
-    console.warn("No se pudieron cargar citas confirmadas/completadas, asumiendo disponibilidad total.", error);
+    console.warn("No se pudo cargar dailySlots, asumiendo cupos limpios.", error);
   }
 
-  // 4. Generate slots
+  // 4. Generar franjas horarias
   const slots = [];
   const allSlots = [];
   const openTime = schedule.hours && schedule.hours.start ? schedule.hours.start : '08:00';
@@ -88,28 +120,10 @@ export const getAvailability = async (date) => {
     currentTime = new Date(currentTime.getTime() + slotDuration * 60000);
   }
 
-  // Fetch slot counters to contrast safely
-  const slotCounters = {};
-  try {
-    const promises = timesToGenerate.map(async (timeString) => {
-      const slotRef = doc(db, 'slots', `${date}_${timeString}`);
-      const slotSnap = await getDoc(slotRef);
-      if (slotSnap.exists()) {
-        slotCounters[timeString] = slotSnap.data().count || 0;
-      }
-    });
-    await Promise.all(promises);
-  } catch (error) {
-    console.warn("No se pudieron cargar contadores de slots.", error);
-  }
-
   for (const timeString of timesToGenerate) {
-    const baseCount = bookedSlots[timeString] || 0;
-    const counterCount = slotCounters[timeString] || 0;
-    const bookedCount = Math.max(baseCount, counterCount);
-    
+    const bookedCount = dailyCounts[timeString] || 0;
     const isBooked = bookedCount >= activeStylists;
-    
+
     let isPast = false;
     if (isToday) {
       const slotTime = parse(timeString, 'HH:mm', new Date());
@@ -119,7 +133,7 @@ export const getAvailability = async (date) => {
     }
 
     const isAvailable = !isBooked && !isPast;
-    
+
     allSlots.push({
       time: timeString,
       isAvailable,
@@ -137,140 +151,143 @@ export const getAvailability = async (date) => {
   return { date, slots, allSlots, isClosed: false };
 };
 
-export const createAppointment = async ({ date, time, clientName, clientPhone, notes, userId, isAdminManual = false }) => {
-  const appointmentRef = doc(collection(db, 'appointments'));
-  const scheduleRef = doc(db, 'config', 'schedule');
+/**
+ * Agendamiento público de citas.
+ * Redirige la petición a través del endpoint seguro /api/appointments,
+ * validando Firebase App Check y ejecutando la transacción atómica con Firebase Admin SDK.
+ */
+export const createAppointment = async ({ date, time, clientName, clientPhone, notes = '' }) => {
+  const cleanPhone = clientPhone ? String(clientPhone).trim().replace(/\D/g, '') : '';
+  const cleanName = clientName ? String(clientName).trim() : '';
+  const headers = await buildApiHeaders();
+
+  const response = await fetch('/api/appointments', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      date,
+      time,
+      clientName: cleanName,
+      clientPhone: cleanPhone,
+      notes
+    })
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    const message = data.error?.message || 'Error al agendar la cita. Por favor intenta de nuevo.';
+    throw new Error(message);
+  }
+
+  return { success: true, ...data };
+};
+
+/**
+ * Consulta pública de citas.
+ * Consume /api/appointments/lookup con validación opcional de App Check y seguridad en servidor.
+ */
+export const lookupAppointments = async (phone, uid = null) => {
+  const cleanPhone = phone ? String(phone).trim().replace(/\D/g, '') : '';
+  const headers = await buildApiHeaders();
 
   try {
-    await runTransaction(db, async (transaction) => {
-      // 1. Get schedule config to know active stylists
-      const scheduleDoc = await transaction.get(scheduleRef);
-      let activeStylists = 1;
-      if (scheduleDoc.exists()) {
-        const schedule = scheduleDoc.data();
-        activeStylists = (schedule.stylists || []).filter(s => s.active !== false).length || 1;
-      }
-
-      // 2. Count existing appointments for this slot
-      const slotDocRef = doc(db, 'slots', `${date}_${time}`);
-      const slotDoc = await transaction.get(slotDocRef);
-      
-      let bookedCount = 0;
-      if (slotDoc.exists()) {
-         bookedCount = slotDoc.data().count || 0;
-      }
-
-      if (bookedCount >= activeStylists) {
-        throw new Error('SLOT_TAKEN');
-      }
-
-      // Update slot count
-      transaction.set(slotDocRef, { count: bookedCount + 1 }, { merge: true });
-
-      // Save the appointment
-      const finalUserId = isAdminManual ? null : (userId !== undefined ? userId : (auth.currentUser?.uid || null));
-      const cleanPhone = clientPhone ? String(clientPhone).trim().replace(/\D/g, '') : '';
-      transaction.set(appointmentRef, {
-        userId: finalUserId,
-        date,
-        time,
-        clientName,
+    const response = await fetch('/api/appointments/lookup', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
         clientPhone: cleanPhone,
-        notes: notes || '',
-        status: 'confirmed',
-        source: isAdminManual ? 'admin' : 'web',
-        createdAt: serverTimestamp()
-      });
+        userId: uid || null
+      })
     });
-    
-    return { success: true, id: appointmentRef.id, date, time, clientName, clientPhone };
-  } catch (error) {
-    if (error.message === 'SLOT_TAKEN') {
-      throw new Error('El horario seleccionado ya no está disponible (Race Condition evitada).');
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      const message = data.error?.message || 'Error al consultar las citas.';
+      throw new Error(message);
     }
+
+    return data.appointments || [];
+  } catch (error) {
+    console.error('Error in lookupAppointments:', error);
     throw error;
   }
 };
 
-export const lookupAppointments = async (phone, uid) => {
-  const results = [];
-  
-  const cleanPhone = phone ? String(phone).trim().replace(/\D/g, '') : null;
-  
-  if (cleanPhone && cleanPhone.length > 0) {
-    const qPhone = query(
-      collection(db, 'appointments'),
-      where('clientPhone', '==', cleanPhone),
-      where('status', '==', 'confirmed')
-    );
-    const snapPhone = await getDocs(qPhone);
-    snapPhone.forEach(d => results.push({ id: d.id, ...d.data() }));
-  }
-
-  if (uid) {
-    const qUid = query(
-      collection(db, 'appointments'),
-      where('userId', '==', uid),
-      where('status', '==', 'confirmed')
-    );
-    const snapUid = await getDocs(qUid);
-    snapUid.forEach(d => {
-      // avoid duplicates
-      if (!results.find(r => r.id === d.id)) {
-        results.push({ id: d.id, ...d.data() });
-      }
-    });
-  }
-
-  results.sort((a, b) => {
-    if (a.date === b.date) return a.time.localeCompare(b.time);
-    return a.date.localeCompare(b.date);
-  });
-
-  return results;
-};
-
-export const cancelAppointment = async (appointmentId, clientPhone, userId, isAdmin = false) => {
-  const ref = doc(db, 'appointments', appointmentId);
-  const snap = await getDoc(ref);
-  
-  if (!snap.exists()) {
-    throw new Error('Cita no encontrada');
-  }
-
-  const data = snap.data();
-  if (!isAdmin && data.clientPhone !== clientPhone && data.userId !== userId) {
-    throw new Error('No tienes permiso para cancelar esta cita');
-  }
-
-  // Also need to decrement the slot count
-  const slotDocRef = doc(db, 'slots', `${data.date}_${data.time}`);
-  
-  await runTransaction(db, async (transaction) => {
-    const slotDoc = await transaction.get(slotDocRef);
-    if (slotDoc.exists() && slotDoc.data().count > 0) {
-      transaction.set(slotDocRef, { count: slotDoc.data().count - 1 }, { merge: true });
+/**
+ * Cancelación de citas.
+ * Si es admin, actualiza directamente con privilegios de superadmin;
+ * si es usuario público, canaliza a través de /api/appointments/cancel.
+ */
+export const cancelAppointment = async (appointmentId, clientPhone, userId = null, isAdmin = false) => {
+  if (isAdmin) {
+    const ref = doc(db, 'appointments', appointmentId);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) {
+      throw new Error('Cita no encontrada');
     }
-    
-    transaction.update(ref, {
+
+    const data = snap.data();
+    if (data.date && data.time) {
+      const dailySlotRef = doc(db, 'dailySlots', data.date);
+      try {
+        const slotSnap = await getDoc(dailySlotRef);
+        if (slotSnap.exists()) {
+          const counts = slotSnap.data().counts || {};
+          const updated = Math.max(0, (counts[data.time] || 0) - 1);
+          await updateDoc(dailySlotRef, { [`counts.${data.time}`]: updated });
+        }
+      } catch (err) {
+        console.warn('Error decrementing dailySlots on admin cancel:', err.message);
+      }
+    }
+
+    await updateDoc(ref, {
       status: 'cancelled',
       cancelledAt: serverTimestamp()
     });
+
+    return true;
+  }
+
+  // Cancelación pública vía backend API
+  const cleanPhone = clientPhone ? String(clientPhone).trim().replace(/\D/g, '') : '';
+  const headers = await buildApiHeaders();
+
+  const response = await fetch('/api/appointments/cancel', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      id: appointmentId,
+      clientPhone: cleanPhone
+    })
   });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    const message = data.error?.message || 'Error al cancelar la cita.';
+    throw new Error(message);
+  }
 
   return true;
 };
 
+/**
+ * Marca una cita como completada (usado desde panel de administración).
+ */
 export const completeAppointment = async (appointmentId, isAdmin = false) => {
   const ref = doc(db, 'appointments', appointmentId);
   const snap = await getDoc(ref);
   if (!snap.exists()) {
     throw new Error('Cita no encontrada');
   }
-  
+
   await updateDoc(ref, {
     status: 'completed',
     completedAt: serverTimestamp()
   });
+
   return { success: true, id: appointmentId, status: 'completed' };
 };

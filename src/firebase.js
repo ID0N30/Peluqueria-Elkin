@@ -1,1 +1,1 @@
-export { db, auth } from './lib/firebaseClient.js';
+export { db, auth, getAppCheckToken } from './lib/firebaseClient.js';

@@ -1,12 +1,21 @@
+import React, { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import BookingPage from './pages/BookingPage';
-import CancelPage from './pages/CancelPage';
-import AdminLoginPage from './pages/AdminLoginPage';
-import AdminDashboardPage from './pages/AdminDashboardPage';
 import Navbar from './components/Navbar';
 import { AuthProvider } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { Scissors } from 'lucide-react';
+
+const CancelPage = lazy(() => import('./pages/CancelPage'));
+const AdminLoginPage = lazy(() => import('./pages/AdminLoginPage'));
+const AdminDashboardPage = lazy(() => import('./pages/AdminDashboardPage'));
+
+const PageLoader = () => (
+  <div className="flex-1 flex flex-col items-center justify-center min-h-[50vh] gap-3">
+    <div className="w-8 h-8 border-2 border-zinc-200 dark:border-zinc-800 border-t-zinc-900 dark:border-t-white rounded-full animate-spin"></div>
+    <span className="text-xs text-zinc-400 font-medium tracking-wide">Cargando...</span>
+  </div>
+);
 
 function App() {
   return (
@@ -17,12 +26,14 @@ function App() {
             <Navbar />
 
             <main className="flex-1 flex flex-col">
-              <Routes>
-                <Route path="/" element={<BookingPage />} />
-                <Route path="/cancel" element={<CancelPage />} />
-                <Route path="/admin/login" element={<AdminLoginPage />} />
-                <Route path="/admin" element={<AdminDashboardPage />} />
-              </Routes>
+              <Suspense fallback={<PageLoader />}>
+                <Routes>
+                  <Route path="/" element={<BookingPage />} />
+                  <Route path="/cancel" element={<CancelPage />} />
+                  <Route path="/admin/login" element={<AdminLoginPage />} />
+                  <Route path="/admin" element={<AdminDashboardPage />} />
+                </Routes>
+              </Suspense>
             </main>
 
             <footer className="border-t border-zinc-200/80 dark:border-zinc-800/80 bg-white dark:bg-[#121215] py-16 transition-colors duration-300">
@@ -40,8 +51,8 @@ function App() {
                   
                   <div className="flex flex-col items-center md:items-start gap-2">
                     <h3 className="font-semibold mb-2">Ubicación & Horario</h3>
-                    <p className="text-zinc-500 dark:text-zinc-400 text-sm">[Victoria, Caldas - Dirección o referencia del local]</p>
-                    <p className="text-zinc-500 dark:text-zinc-400 text-sm mt-1">[Horario de atención: ej. Lunes a Sábado]</p>
+                    <p className="text-zinc-500 dark:text-zinc-400 text-sm">Victoria, Caldas — Zona Urbana</p>
+                    <p className="text-zinc-500 dark:text-zinc-400 text-sm mt-1">Atención con cita previa de Lunes a Sábado</p>
                   </div>
 
                   <div className="flex flex-col items-center md:items-start gap-2">
