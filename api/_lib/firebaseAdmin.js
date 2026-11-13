@@ -7,11 +7,14 @@ let app = getApps()[0];
 // Evitar inicializar más de una vez en entornos serverless
 if (!app) {
   try {
-    let rawKey = process.env.FIREBASE_SERVICE_ACCOUNT_KEY?.trim();
-    if (rawKey) {
-      if ((rawKey.startsWith("'") && rawKey.endsWith("'")) || (rawKey.startsWith('"') && rawKey.endsWith('"'))) {
-        rawKey = rawKey.slice(1, -1).trim();
+    let rawKey = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
+    if (rawKey && typeof rawKey === 'string') {
+      const firstBrace = rawKey.indexOf('{');
+      const lastBrace = rawKey.lastIndexOf('}');
+      if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+        rawKey = rawKey.substring(firstBrace, lastBrace + 1);
       }
+
       const serviceAccount = JSON.parse(rawKey);
       if (serviceAccount.private_key && typeof serviceAccount.private_key === 'string') {
         serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
