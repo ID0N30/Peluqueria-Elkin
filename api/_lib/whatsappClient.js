@@ -13,11 +13,31 @@ function formatRecipient(to) {
 }
 
 /**
+ * Obtiene las credenciales de Meta y auto-corrige si fueron asignadas de forma invertida
+ * (por ejemplo, si el Phone Number ID fue puesto en el Access Token y viceversa).
+ */
+function getMetaCredentials() {
+  let token = process.env.WHATSAPP_ACCESS_TOKEN?.trim() || '';
+  let phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID?.trim() || '';
+
+  const tokenIsNumeric = /^\d+$/.test(token);
+  const phoneIdIsToken = phoneNumberId.startsWith('EAA') || phoneNumberId.length > 50;
+
+  if (tokenIsNumeric && phoneIdIsToken) {
+    console.warn('⚠️ Auto-corrección de credenciales: WHATSAPP_ACCESS_TOKEN y WHATSAPP_PHONE_NUMBER_ID estaban invertidas en process.env.');
+    const temp = token;
+    token = phoneNumberId;
+    phoneNumberId = temp;
+  }
+
+  return { token, phoneNumberId };
+}
+
+/**
  * Envía una petición POST al endpoint de mensajes de WhatsApp Cloud API.
  */
 async function sendWhatsAppRequest(payload) {
-  const token = process.env.WHATSAPP_ACCESS_TOKEN;
-  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+  const { token, phoneNumberId } = getMetaCredentials();
 
   if (!token || !phoneNumberId) {
     console.error('Credenciales de WhatsApp Cloud API no configuradas (WHATSAPP_ACCESS_TOKEN / WHATSAPP_PHONE_NUMBER_ID).');
