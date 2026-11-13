@@ -1,6 +1,5 @@
 import { getApps, initializeApp, cert } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
-import { getAuth } from 'firebase-admin/auth';
 
 let app = getApps()[0];
 
@@ -44,5 +43,19 @@ if (!app) {
 }
 
 export const db = app ? getFirestore(app) : null;
-export const auth = app ? getAuth(app) : null;
+
+// Proxy para carga diferida de auth (evita ERR_REQUIRE_ESM de jwks-rsa/jose en serverless)
+export const auth = new Proxy({}, {
+  get(_target, prop) {
+    return async (...args) => {
+      const { getAuth } = await import('firebase-admin/auth');
+      const authInstance = getAuth(app);
+      if (typeof authInstance[prop] === 'function') {
+        return authInstance[prop](...args);
+      }
+      return authInstance[prop];
+    };
+  }
+});
+
 export default app;
