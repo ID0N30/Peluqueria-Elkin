@@ -204,3 +204,18 @@ Para mantener todo el ecosistema dentro de **Firebase / Google Cloud** sin cuent
   - Si `preloadedCounts !== null`, usa ese objeto directamente sin ejecutar `getDoc(doc(db, 'dailySlots', date))`.
 - [x] En `src/pages/BookingPage.jsx` (líneas 89 y 131-133):
   - En el callback de `onSnapshot(dailySlotRef, (snap) => ...)`, extraer `const counts = snap.exists() ? (snap.data().counts || {}) : {};` y pasarlo directamente a `fetchSlotsForDate(selectedDate, !isInitial, counts)` → `api.getAvailability(date, counts)`. Esto ahorra 1 lectura de Firestore adicional en cada clic o actualización en vivo.
+
+
+---
+
+## Fase 8 — UX Mobile: Separar el Icono/Botón de Iniciar Sesión del Menú Desplegable (`src/components/Navbar.jsx`)
+
+### 1. Mostrar Acceso Directo de Inicio de Sesión / Perfil en la Barra Superior Móvil
+- [x] **En `src/components/Navbar.jsx` (sección `md:hidden flex items-center gap-2`, líneas 114-127)**:
+  - **Problema actual**: En dispositivos móviles, la opción de **Iniciar Sesión** (y el avatar del usuario) está oculta dentro del menú hamburguesa desplegable (`isMobileMenuOpen`), por lo que los usuarios y el administrador no la ven inmediatamente al entrar a la web desde el celular.
+  - **Solución**:
+    - Colocar en la barra superior móvil (`md:hidden`), junto al botón de cambio de tema (`Sun`/`Moon`) y antes del botón del menú desplegable (`Menu`/`X`), el acceso directo de sesión:
+      - **Si no ha iniciado sesión (`!user`)**: Mostrar un botón/icono visible de acceso rápido (por ejemplo, icono `User` o botón compacto con icono `User` + texto corto `"Entrar"` / `"Iniciar Sesión"` o botón circular destacado con `aria-label="Iniciar Sesión"` y `title="Iniciar Sesión"`) que al tocarlo abra directamente el modal `setIsAuthModalOpen(true)` sin necesidad de abrir el menú desplegable.
+      - **Si ya inició sesión (`user`)**: Mostrar el avatar del usuario (`user.photoURL` o icono `User` con indicador de sesión activa, y acceso rápido a `/admin` o apertura del menú de cuenta) directamente en la barra superior móvil.
+    - Ajustar el bloque inferior del menú desplegable móvil (`líneas 161-198`) para que no duplique innecesariamente el botón de inicio de sesión o mantenga únicamente las acciones complementarias de cuenta (como `"Cerrar sesión"` cuando `user` está activo).
+    - Verificar que en pantallas pequeñas (`320px` - `375px`) el logo `"Elkin"` y los iconos de la derecha mantengan un espaciado limpio sin desbordamiento horizontal (`overflow-x-hidden`).

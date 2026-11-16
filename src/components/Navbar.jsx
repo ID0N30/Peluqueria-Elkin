@@ -31,7 +31,7 @@ export default function Navbar() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-20">
             {/* Logo */}
-            <Link to="/" className="flex items-center gap-2 group">
+            <Link to="/" className="flex items-center gap-2 group shrink-0">
               <div className="bg-zinc-900 text-white dark:bg-white dark:text-zinc-900 p-2 rounded-xl group-hover:scale-105 transition-transform">
                 <Scissors className="w-6 h-6" />
               </div>
@@ -110,17 +110,69 @@ export default function Navbar() {
               )}
             </div>
 
-            {/* Mobile menu button */}
-            <div className="md:hidden flex items-center gap-2">
+            {/* Mobile menu button and quick auth */}
+            <div className="md:hidden flex items-center gap-1.5 shrink-0">
               <button
                 onClick={toggleTheme}
-                className="p-2 text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                className="p-1.5 text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors shrink-0"
+                aria-label="Cambiar tema"
+                title="Cambiar tema"
               >
                 {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
               </button>
+
+              {!user ? (
+                <button
+                  onClick={() => {
+                    setIsMobileMenuOpen(false);
+                    setIsAuthModalOpen(true);
+                  }}
+                  className="px-3 py-1.5 rounded-full text-xs font-medium bg-zinc-900 text-white dark:bg-white dark:text-zinc-900 flex items-center gap-1.5 shrink-0 shadow-sm active:scale-95 transition-all"
+                  aria-label="Iniciar Sesión"
+                  title="Iniciar Sesión"
+                >
+                  <User className="w-3.5 h-3.5" />
+                  <span>Entrar</span>
+                </button>
+              ) : (
+                <>
+                  {isAdmin && (
+                    <Link
+                      to="/admin"
+                      onClick={() => setIsMobileMenuOpen(false)}
+                      className="p-2 rounded-full text-amber-600 dark:text-amber-500 bg-amber-50 dark:bg-amber-950/30 shrink-0 transition-colors"
+                      aria-label="Panel Admin"
+                      title="Panel de Administración"
+                    >
+                      <ShieldAlert className="w-4 h-4" />
+                    </Link>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setIsMobileMenuOpen(prev => !prev)}
+                    className="relative w-8 h-8 rounded-full flex items-center justify-center bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 overflow-visible shrink-0 transition-transform active:scale-95"
+                    aria-label="Menú de cuenta"
+                    title={user.displayName || 'Mi Cuenta'}
+                  >
+                    <div className="w-full h-full rounded-full overflow-hidden flex items-center justify-center">
+                      {user.photoURL ? (
+                        <img src={user.photoURL} alt="Avatar" className="w-full h-full object-cover" />
+                      ) : (
+                        <User className="w-4 h-4 text-zinc-600 dark:text-zinc-300" />
+                      )}
+                    </div>
+                    <span 
+                      className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-500 border-2 border-white dark:border-[#09090B] rounded-full" 
+                      title="Sesión activa" 
+                    />
+                  </button>
+                </>
+              )}
+
               <button
                 onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                className="p-2 rounded-lg text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                className="p-1.5 rounded-lg text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors shrink-0"
+                aria-label={isMobileMenuOpen ? "Cerrar menú" : "Abrir menú"}
               >
                 {isMobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
               </button>
@@ -158,11 +210,11 @@ export default function Navbar() {
                 </Link>
               )}
 
-              <div className="mt-4 pt-4 border-t border-zinc-100 dark:border-zinc-800">
-                {user ? (
+              {user && (
+                <div className="mt-4 pt-4 border-t border-zinc-100 dark:border-zinc-800">
                   <div className="flex items-center justify-between px-3">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-zinc-100 dark:bg-zinc-800 rounded-full flex items-center justify-center border border-zinc-200 dark:border-zinc-700">
+                      <div className="w-10 h-10 bg-zinc-100 dark:bg-zinc-800 rounded-full flex items-center justify-center border border-zinc-200 dark:border-zinc-700 overflow-hidden">
                         {user.photoURL ? (
                           <img src={user.photoURL} alt="Avatar" className="w-full h-full object-cover rounded-full" />
                         ) : (
@@ -171,7 +223,7 @@ export default function Navbar() {
                       </div>
                       <div>
                         <div className="text-base font-medium text-zinc-900 dark:text-zinc-100">{user.displayName || 'Usuario'}</div>
-                        <div className="text-sm text-zinc-500 dark:text-zinc-400">{user.email || 'Invitado'}</div>
+                        <div className="text-sm text-zinc-500 dark:text-zinc-400">{user.email || (user.isAnonymous ? 'Invitado' : 'Usuario')}</div>
                       </div>
                     </div>
                     <button 
@@ -179,23 +231,15 @@ export default function Navbar() {
                         handleLogout();
                         setIsMobileMenuOpen(false);
                       }}
-                      className="p-2 text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-full"
+                      className="p-2 text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-full transition-colors"
+                      title="Cerrar sesión"
+                      aria-label="Cerrar sesión"
                     >
                       <LogOut className="w-5 h-5" />
                     </button>
                   </div>
-                ) : (
-                  <button
-                    onClick={() => {
-                      setIsMobileMenuOpen(false);
-                      setIsAuthModalOpen(true);
-                    }}
-                    className="w-full mt-2 bg-zinc-900 text-white dark:bg-white dark:text-zinc-900 px-5 py-3 rounded-xl text-base font-medium hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-colors"
-                  >
-                    Iniciar Sesión
-                  </button>
-                )}
-              </div>
+                </div>
+              )}
             </div>
           </div>
         )}
