@@ -5,7 +5,6 @@ import AppointmentsList from '../components/AppointmentsList';
 import ScheduleEditor from '../components/ScheduleEditor';
 import StylistsManager from '../components/StylistsManager';
 import BlockedDatesManager from '../components/BlockedDatesManager';
-import ChangePasswordForm from '../components/ChangePasswordForm';
 import MetricsHistory from '../components/MetricsHistory';
 import { ShieldAlert, LogOut, LayoutDashboard, CalendarDays, Settings } from 'lucide-react';
 
@@ -127,10 +126,6 @@ export default function AdminDashboardPage() {
               <div className="bg-white dark:bg-[#18181B] border border-zinc-200/80 dark:border-zinc-800 rounded-3xl p-6 sm:p-8 shadow-sm">
                 <h3 className="text-xl font-bold font-playfair mb-6 text-zinc-900 dark:text-white border-b border-zinc-100 dark:border-zinc-800 pb-4">Personal</h3>
                 <StylistsManager />
-              </div>
-              <div className="bg-white dark:bg-[#18181B] border border-zinc-200/80 dark:border-zinc-800 rounded-3xl p-6 sm:p-8 shadow-sm">
-                <h3 className="text-xl font-bold font-playfair mb-6 text-zinc-900 dark:text-white border-b border-zinc-100 dark:border-zinc-800 pb-4">Seguridad</h3>
-                <ChangePasswordForm />
               </div>
             </div>
           </div>

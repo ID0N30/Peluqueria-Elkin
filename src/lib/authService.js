@@ -7,10 +7,7 @@ import {
   signInAnonymously, 
   signOut, 
   onAuthStateChanged,
-  updateProfile,
-  EmailAuthProvider,
-  reauthenticateWithCredential,
-  updatePassword
+  updateProfile
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { isSuperAdmin, HARDCODED_ADMIN_EMAILS } from './adminConfigService.js';
@@ -159,17 +156,6 @@ export const subscribeToAuthState = (callback) => {
       callback(null);
     }
   });
-};
-
-export const changePassword = async (currentPassword, newPassword) => {
-  const user = auth.currentUser;
-  if (!user || !user.email) {
-    throw new Error("No hay una sesión activa con correo para cambiar la contraseña.");
-  }
-  const credential = EmailAuthProvider.credential(user.email, currentPassword);
-  await reauthenticateWithCredential(user, credential);
-  await updatePassword(user, newPassword);
-  return true;
 };
 
 export const saveClientContactData = async (phone, name) => {

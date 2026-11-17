@@ -4,7 +4,7 @@ import {
   lookupAppointments, 
   cancelAppointment 
 } from './bookingService.js';
-import { loginWithEmail, changePassword } from './authService.js';
+import { loginWithEmail } from './authService.js';
 
 // DEPRECATED: This file is kept for backward compatibility with older components.
 // It maps the old Vercel Serverless API calls to the new Direct Firebase Client SDK logic.
@@ -30,9 +30,5 @@ export const api = {
   adminLogin: async (password) => {
     console.warn("adminLogin API stub called. Please migrate to authService.js loginWithEmail.");
     return await loginWithEmail('peluqueriaelkin@gmail.com', password);
-  },
-    
-  changePassword: async (currentPassword, newPassword) => {
-    return await changePassword(currentPassword, newPassword);
   }
 };
